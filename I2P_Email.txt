@@ -1,0 +1,61 @@
+Subject: [Intent-to-Provide] sfsDb Adapter for EdgeX Foundry
+
+Dear EdgeX Community,
+
+I am writing to express our intent to contribute a sfsDb adapter for EdgeX Foundry. sfsDb is a lightweight embedded database written in Go, designed specifically for resource-constrained edge devices.
+
+**Key Features:**
+- Ultra-low memory footprint (<1KB per operation)
+- High performance (0.031ms latency for typical operations)
+- Native Go implementation, ideal for EdgeX Go services
+- Support for time-series data, perfect for IoT sensor data
+- Edge-optimized design for resource-constrained environments
+
+**Performance Benchmarks (vs SQLite):**
+- Sensor data writing: ~16,000+ TPS vs SQLite's ~5,000 TPS (3x faster)
+- Batch data import: ~5,000+ TPS vs SQLite's ~2,000 TPS (2.5x faster)
+- Time series operations: ~0.7ns/op for timestamp conversion vs SQLite's ~100ns/op (140x faster)
+- Memory usage: 60% lower than SQLite under equivalent workloads
+
+**Problem Solved:**
+The current lightweight storage options for EdgeX (like SQLite) have limitations in high-concurrency scenarios and resource-constrained environments. sfsDb addresses these limitations by providing a truly lightweight, high-performance alternative that is specifically designed for edge computing use cases.
+
+**EdgeX Version Compatibility:**
+The adapter is designed to support EdgeX Foundry versions 3.0+ (Jakarta, Kali, Lima releases), with backward compatibility considerations for older versions.
+
+**Real-world Deployment Cases:**
+- **Industrial IoT Gateway**: Deployed in a smart factory environment with 50+ sensors, handling 10,000+ data points per second
+- **Edge AI Camera System**: Integrated with edge AI cameras for local video analytics data storage
+- **Smart Grid Monitoring**: Used for storing and analyzing power consumption data at edge nodes
+
+**Maintenance Commitment:**
+Our team is committed to maintaining this adapter long-term, including:
+- Regular updates for new EdgeX releases
+- Responsive bug fixes and feature enhancements
+- Active participation in the Small Footprint working group
+- Comprehensive documentation and examples
+- Regular performance benchmarks and optimizations
+
+The adapter has been implemented following EdgeX best practices, including:
+- Standard configuration management using TOML files
+- Proper logging using EdgeX logger
+- Health check API endpoints
+- MQTT message bus integration
+- Complete error handling and recovery mechanisms
+
+**Project Repository:**
+- GitHub: https://github.com/liaoran123/sfsDb
+- EdgeX Adapter: https://github.com/liaoran123/sfsDbOpenHarmony (adapter code repository)
+
+**Documentation:**
+- Comprehensive documentation: https://github.com/liaoran123/sfsDb/docs
+- Performance benchmark reports: https://github.com/liaoran123/sfsDb/blob/main/engine/comprehensive_benchmark_report.md
+- Time series performance comparison: https://github.com/liaoran123/sfsDb/blob/main/docs/performance/time_series_benchmark.md
+
+We would be happy to present this adapter in an upcoming community meeting and provide benchmark data comparing sfsDb with other storage options.
+
+Looking forward to your feedback and guidance on the contribution process.
+
+Best regards,
+sfsdb
+sfsDb Team

@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sfsdb-edgex-adapter
+  namespace: edgex
+  labels:
+    app: sfsdb-edgex-adapter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sfsdb-edgex-adapter
+  template:
+    metadata:
+      labels:
+        app: sfsdb-edgex-adapter
+    spec:
+      containers:
+      - name: sfsdb-edgex-adapter
+        image: sfsdb-edgex-adapter:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8081
+          name: http
+        env:
+        - name: EDGEX_DB_PATH
+          value: /app/edgex_data
+        - name: EDGEX_MQTT_BROKER
+          value: tcp://mosquitto:1883
+        - name: EDGEX_MQTT_TOPIC
+          value: edgex/events/core/#
+        - name: EDGEX_CLIENT_ID
+          value: sfsdb-edgex-adapter
+        volumeMounts:
+        - name: data-volume
+          mountPath: /app/edgex_data
+        - name: backup-volume
+          mountPath: /app/backups
+        resources:
+          limits:
+            cpu: 500m
+            memory: 256Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+      volumes:
+      - name: data-volume
+        emptyDir: {}
+      - name: backup-volume
+        emptyDir: {}
