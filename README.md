@@ -1,5 +1,7 @@
 # sfsDb EdgeX Adapter
 
+[中文版本 (Chinese Version)](README_CN.md)
+
 ## Overview
 The sfsDb EdgeX Adapter provides seamless integration between EdgeX Foundry and sfsDb embedded database, enabling efficient storage and retrieval of device data at the edge. This adapter follows EdgeX Foundry best practices and standards for edge computing solutions.
 
@@ -369,7 +371,16 @@ This project is licensed under the [Apache 2.0 License](LICENSE), consistent wit
 - GitHub issues for bug reports and feature requests
 
 ### Commercial Support
-For commercial support options, please contact your EdgeX Foundry vendor or solution provider.
+
+We offer commercial support and enterprise solutions for sfsdb-edgex-adapter:
+
+- **Enterprise Edition**: Advanced features including enhanced data compression, security integration, and monitoring capabilities
+- **Consulting Services**: EdgeX integration consulting and architecture design
+- **Custom Development**: Tailored solutions for specific industries
+- **Technical Training**: EdgeX and sfsDb related training
+- **Priority Support**: Dedicated technical support with guaranteed response times
+
+For more information about commercial offerings, please contact us at [sfsweb@qq.com](mailto:sfsweb@qq.com).
 
 ## Roadmap
 
