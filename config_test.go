@@ -3,6 +3,8 @@ package main
 import (
 	"os"
 	"testing"
+
+	"sfsdb-edgex-adapter/config"
 )
 
 // TestConfigFromEnvironment 测试从环境变量加载配置
@@ -26,25 +28,27 @@ func TestConfigFromEnvironment(t *testing.T) {
 	os.Setenv("EDGEX_CLIENT_ID", testClientID)
 
 	// 加载配置
-	if err := loadConfig(); err != nil {
+	var err error
+	appConfig, err = config.Load()
+	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
 
 	// 验证配置
-	if config.DBPath != testDBPath {
-		t.Errorf("Expected DBPath %s, got %s", testDBPath, config.DBPath)
+	if appConfig.DBPath != testDBPath {
+		t.Errorf("Expected DBPath %s, got %s", testDBPath, appConfig.DBPath)
 	}
 
-	if config.MQTTBroker != testMQTTBroker {
-		t.Errorf("Expected MQTTBroker %s, got %s", testMQTTBroker, config.MQTTBroker)
+	if appConfig.MQTTBroker != testMQTTBroker {
+		t.Errorf("Expected MQTTBroker %s, got %s", testMQTTBroker, appConfig.MQTTBroker)
 	}
 
-	if config.MQTTTopic != testMQTTTopic {
-		t.Errorf("Expected MQTTTopic %s, got %s", testMQTTTopic, config.MQTTTopic)
+	if appConfig.MQTTTopic != testMQTTTopic {
+		t.Errorf("Expected MQTTTopic %s, got %s", testMQTTTopic, appConfig.MQTTTopic)
 	}
 
-	if config.ClientID != testClientID {
-		t.Errorf("Expected ClientID %s, got %s", testClientID, config.ClientID)
+	if appConfig.ClientID != testClientID {
+		t.Errorf("Expected ClientID %s, got %s", testClientID, appConfig.ClientID)
 	}
 
 	// 恢复原始环境变量
@@ -65,25 +69,27 @@ func TestDefaultConfig(t *testing.T) {
 	os.Unsetenv("EDGEX_CLIENT_ID")
 
 	// 加载配置
-	if err := loadConfig(); err != nil {
+	var err error
+	appConfig, err = config.Load()
+	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
 
 	// 验证默认配置
-	if config.DBPath != "./edgex_data" {
-		t.Errorf("Expected default DBPath ./edgex_data, got %s", config.DBPath)
+	if appConfig.DBPath != "./edgex_data" {
+		t.Errorf("Expected default DBPath ./edgex_data, got %s", appConfig.DBPath)
 	}
 
-	if config.MQTTBroker != "tcp://localhost:1883" {
-		t.Errorf("Expected default MQTTBroker tcp://localhost:1883, got %s", config.MQTTBroker)
+	if appConfig.MQTTBroker != "tcp://localhost:1883" {
+		t.Errorf("Expected default MQTTBroker tcp://localhost:1883, got %s", appConfig.MQTTBroker)
 	}
 
-	if config.MQTTTopic != "edgex/events/core/#" {
-		t.Errorf("Expected default MQTTTopic edgex/events/core/#, got %s", config.MQTTTopic)
+	if appConfig.MQTTTopic != "edgex/events/core/#" {
+		t.Errorf("Expected default MQTTTopic edgex/events/core/#, got %s", appConfig.MQTTTopic)
 	}
 
 	// ClientID 是动态生成的，只需要验证不为空
-	if config.ClientID == "" {
+	if appConfig.ClientID == "" {
 		t.Error("Expected non-empty ClientID, got empty")
 	}
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sfsdb-edgex-adapter/config"
 	"testing"
 	"time"
 )
@@ -15,7 +16,9 @@ func TestPerformance(t *testing.T) {
 	os.Setenv("EDGEX_DB_PATH", dbPath)
 
 	// 加载配置
-	if err := loadConfig(); err != nil {
+	var err error
+	appConfig, err = config.Load()
+	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
 
@@ -114,7 +117,9 @@ func TestMemoryUsage(t *testing.T) {
 	os.Setenv("EDGEX_DB_PATH", dbPath)
 
 	// 加载配置
-	if err := loadConfig(); err != nil {
+	var err error
+	appConfig, err = config.Load()
+	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
 

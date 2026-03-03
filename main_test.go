@@ -6,6 +6,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"sfsdb-edgex-adapter/config"
 )
 
 // TestHealthCheck 测试健康检查接口
@@ -104,7 +106,9 @@ func TestDatabaseInitialization(t *testing.T) {
 	os.Setenv("EDGEX_DB_PATH", dbPath)
 
 	// 加载配置
-	if err := loadConfig(); err != nil {
+	var err error
+	appConfig, err = config.Load()
+	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
 

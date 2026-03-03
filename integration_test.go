@@ -6,6 +6,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"sfsdb-edgex-adapter/config"
 )
 
 // TestMQTTIntegration 测试与 MQTT 消息总线的集成
@@ -15,7 +17,9 @@ func TestMQTTIntegration(t *testing.T) {
 	os.Setenv("EDGEX_DB_PATH", dbPath)
 
 	// 加载配置
-	if err := loadConfig(); err != nil {
+	var err error
+	appConfig, err = config.Load()
+	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
 
@@ -78,7 +82,9 @@ func TestDataFlow(t *testing.T) {
 	os.Setenv("EDGEX_DB_PATH", dbPath)
 
 	// 加载配置
-	if err := loadConfig(); err != nil {
+	var err error
+	appConfig, err = config.Load()
+	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
 

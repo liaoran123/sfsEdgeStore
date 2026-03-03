@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"testing"
+
+	"sfsdb-edgex-adapter/config"
 )
 
 // TestInvalidMessageFormat 测试无效的消息格式
@@ -14,7 +16,9 @@ func TestInvalidMessageFormat(t *testing.T) {
 	os.Setenv("EDGEX_DB_PATH", dbPath)
 
 	// 加载配置
-	if err := loadConfig(); err != nil {
+	var err error
+	appConfig, err = config.Load()
+	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
 
@@ -42,7 +46,9 @@ func TestInvalidPayloadFormat(t *testing.T) {
 	os.Setenv("EDGEX_DB_PATH", dbPath)
 
 	// 加载配置
-	if err := loadConfig(); err != nil {
+	var err error
+	appConfig, err = config.Load()
+	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
 
@@ -81,7 +87,9 @@ func TestEmptyReadings(t *testing.T) {
 	os.Setenv("EDGEX_DB_PATH", dbPath)
 
 	// 加载配置
-	if err := loadConfig(); err != nil {
+	var err error
+	appConfig, err = config.Load()
+	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
 
@@ -130,7 +138,9 @@ func TestInvalidValueFormat(t *testing.T) {
 	os.Setenv("EDGEX_DB_PATH", dbPath)
 
 	// 加载配置
-	if err := loadConfig(); err != nil {
+	var err error
+	appConfig, err = config.Load()
+	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
 

@@ -12,19 +12,12 @@ import (
 	"time"
 
 	"sfsdb-edgex-adapter/backup"
+	"sfsdb-edgex-adapter/config"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/liaoran123/sfsDb/engine"
 	"github.com/liaoran123/sfsDb/storage"
 )
-
-// 配置结构体
-type Config struct {
-	DBPath     string `json:"db_path"`
-	MQTTBroker string `json:"mqtt_broker"`
-	MQTTTopic  string `json:"mqtt_topic"`
-	ClientID   string `json:"client_id"`
-}
 
 // EdgeX 消息结构（符合 MessageEnvelope 格式）
 type EdgeXMessage struct {
@@ -56,11 +49,13 @@ type EdgeXReading struct {
 }
 
 var table *engine.Table
-var config Config
+var appConfig *config.Config
 
 func main() {
 	// 加载配置
-	if err := loadConfig(); err != nil {
+	var err error
+	appConfig, err = config.Load()
+	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
@@ -300,57 +295,15 @@ func main() {
 	log.Println("Adapter exited")
 }
 
-// 加载配置
-func loadConfig() error {
-	// 默认配置
-	config = Config{
-		DBPath:     "./edgex_data",
-		MQTTBroker: "tcp://localhost:1883",
-		MQTTTopic:  "edgex/events/core/#",
-		ClientID:   fmt.Sprintf("sfsdb-edgex-adapter-%d", time.Now().Unix()),
-	}
-
-	// 尝试从环境变量加载
-	if dbPath := os.Getenv("EDGEX_DB_PATH"); dbPath != "" {
-		config.DBPath = dbPath
-	}
-	if mqttBroker := os.Getenv("EDGEX_MQTT_BROKER"); mqttBroker != "" {
-		config.MQTTBroker = mqttBroker
-	}
-	if mqttTopic := os.Getenv("EDGEX_MQTT_TOPIC"); mqttTopic != "" {
-		config.MQTTTopic = mqttTopic
-	}
-	if clientID := os.Getenv("EDGEX_CLIENT_ID"); clientID != "" {
-		config.ClientID = clientID
-	}
-
-	// 尝试从配置文件加载
-	configFile := "config.json"
-	if _, err := os.Stat(configFile); err == nil {
-		data, err := os.ReadFile(configFile)
-		if err != nil {
-			return fmt.Errorf("failed to read config file: %v", err)
-		}
-		if err := json.Unmarshal(data, &config); err != nil {
-			return fmt.Errorf("failed to parse config file: %v", err)
-		}
-		log.Println("Loaded config from file")
-	} else {
-		log.Println("Using default config")
-	}
-
-	return nil
-}
-
 // 初始化数据库
 func initDatabase() error {
 	// 确保数据库目录存在
-	if err := os.MkdirAll(config.DBPath, 0755); err != nil {
+	if err := os.MkdirAll(appConfig.DBPath, 0755); err != nil {
 		return fmt.Errorf("failed to create database directory: %v", err)
 	}
 
 	// 打开数据库
-	_, err := storage.GetDBManager().OpenDB(config.DBPath)
+	_, err := storage.GetDBManager().OpenDB(appConfig.DBPath)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %v", err)
 	}
@@ -427,8 +380,8 @@ func initDatabase() error {
 // 初始化 MQTT 客户端
 func initMQTT() (mqtt.Client, error) {
 	opts := mqtt.NewClientOptions()
-	opts.AddBroker(config.MQTTBroker)
-	opts.SetClientID(config.ClientID)
+	opts.AddBroker(appConfig.MQTTBroker)
+	opts.SetClientID(appConfig.ClientID)
 	opts.SetCleanSession(true)
 	opts.SetAutoReconnect(true)
 	opts.SetMaxReconnectInterval(time.Second * 30)
@@ -441,19 +394,19 @@ func initMQTT() (mqtt.Client, error) {
 		return nil, fmt.Errorf("failed to connect to MQTT broker: %v", token.Error())
 	}
 
-	log.Printf("Connected to MQTT broker: %s", config.MQTTBroker)
+	log.Printf("Connected to MQTT broker: %s", appConfig.MQTTBroker)
 	return client, nil
 }
 
 // 订阅 EdgeX 消息
 func subscribeToEdgeX(client mqtt.Client) error {
-	token := client.Subscribe(config.MQTTTopic, 1, nil)
+	token := client.Subscribe(appConfig.MQTTTopic, 1, nil)
 	token.Wait()
 	if token.Error() != nil {
-		return fmt.Errorf("failed to subscribe to topic %s: %v", config.MQTTTopic, token.Error())
+		return fmt.Errorf("failed to subscribe to topic %s: %v", appConfig.MQTTTopic, token.Error())
 	}
 
-	log.Printf("Subscribed to topic: %s", config.MQTTTopic)
+	log.Printf("Subscribed to topic: %s", appConfig.MQTTTopic)
 	return nil
 }
 
