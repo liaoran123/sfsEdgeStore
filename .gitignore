@@ -1,2 +1,39 @@
+# Database directories
+edgex_data/
+test_*_db/
 
+# Database files
+*.ldb
+*.log
+CURRENT
+CURRENT.bak
+LOCK
+LOG
+MANIFEST-*
+
+# Executables
+*.exe
+*.exe~
+
+# Vendor directory
+vendor/
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+build/
+
+# Backup files
+*.backup
+
+# Environment variables
+.env
+
+# Word documents
 word/

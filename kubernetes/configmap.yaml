@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sfsdb-edgex-adapter-config
+  namespace: edgex
+data:
+  config.json: |
+    {
+      "db_path": "/app/edgex_data",
+      "mqtt_broker": "tcp://mosquitto:1883",
+      "mqtt_topic": "edgex/events/core/#",
+      "client_id": "sfsdb-edgex-adapter"
+    }
+  log-level: "info"
+  backup-path: "/app/backups"

@@ -1,0 +1,81 @@
+package common
+
+import (
+	"fmt"
+	"log"
+	"time"
+
+	"github.com/liaoran123/sfsDb/engine"
+)
+
+// QueryReadings 查询读数数据
+func QueryReadings(tbl *engine.Table, deviceName, startTime, endTime string) ([]map[string]any, error) {
+	var readings []map[string]any
+
+	log.Println("Querying readings with filters:")
+	log.Printf("  deviceName: %s", deviceName)
+	log.Printf("  startTime: %s", startTime)
+	log.Printf("  endTime: %s", endTime)
+
+	// 构建时间范围查询
+	var startTimestamp, endTimestamp *int64
+
+	// 解析开始时间
+	if startTime != "" {
+		start, err := time.Parse(time.RFC3339, startTime)
+		if err == nil {
+			ts := start.Unix()
+			startTimestamp = &ts
+		}
+	}
+
+	// 解析结束时间
+	if endTime != "" {
+		end, err := time.Parse(time.RFC3339, endTime)
+		if err == nil {
+			ts := end.Unix()
+			endTimestamp = &ts
+		}
+	}
+
+	// 构建查询范围
+	startRange := make(map[string]any)
+	endRange := make(map[string]any)
+
+	// 利用组合主键 (deviceName + timestamp) 进行更高效的查询
+	// 设置设备名称
+	startRange["deviceName"] = deviceName
+	endRange["deviceName"] = deviceName
+
+	// 设置时间范围
+	if startTimestamp != nil {
+		startRange["timestamp"] = *startTimestamp
+	} else {
+		startRange["timestamp"] = nil // 从最小值开始
+	}
+
+	if endTimestamp != nil {
+		endRange["timestamp"] = *endTimestamp
+	} else {
+		endRange["timestamp"] = nil // 到最大值结束
+	}
+
+	// 执行范围查询
+	iter, err := tbl.SearchRange(nil, &startRange, &endRange)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search readings: %v", err)
+	}
+	defer iter.Release()
+
+	// 获取记录
+	records := iter.GetRecords(true)
+	defer records.Release()
+
+	// 转换记录为map切片
+	for _, record := range records {
+		readings = append(readings, record)
+	}
+
+	log.Printf("Found %d readings", len(readings))
+	return readings, nil
+}
