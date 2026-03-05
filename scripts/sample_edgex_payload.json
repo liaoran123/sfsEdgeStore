@@ -1,0 +1,20 @@
+{
+  "correlationId": "sample-1",
+  "messageType": "event",
+  "origin": 1672531200000000000,
+  "payload": {
+    "id": "event-id-1",
+    "deviceName": "device-001",
+    "readings": [
+      {
+        "id": "reading-1",
+        "resourceName": "temperature",
+        "value": "25",
+        "valueType": "Int32",
+        "origin": 1672531200000000000,
+        "baseType": "Int32"
+      }
+    ],
+    "origin": 1672531200000000000
+  }
+}
