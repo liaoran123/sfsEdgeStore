@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"sfsdb-edgex-adapter-enterprise/config"
+	"sfsEdgeStore/config"
 )
 
 // TestConfigFromEnvironment 测试从环境变量加载配置

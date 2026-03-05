@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"sfsdb-edgex-adapter-enterprise/auth"
+	"sfsEdgeStore/auth"
 )
 
 // TestAPIKeyGeneration 测试API Key生成

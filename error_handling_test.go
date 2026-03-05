@@ -6,9 +6,9 @@ import (
 	"os"
 	"testing"
 
-	"sfsdb-edgex-adapter-enterprise/config"
-	"sfsdb-edgex-adapter-enterprise/database"
-	"sfsdb-edgex-adapter-enterprise/edgex"
+	"sfsEdgeStore/config"
+	"sfsEdgeStore/database"
+	"sfsEdgeStore/edgex"
 )
 
 // TestInvalidMessageFormat 测试无效的消息格式

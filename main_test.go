@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"sfsdb-edgex-adapter-enterprise/config"
-	"sfsdb-edgex-adapter-enterprise/database"
-	"sfsdb-edgex-adapter-enterprise/edgex"
+	"sfsEdgeStore/config"
+	"sfsEdgeStore/database"
+	"sfsEdgeStore/edgex"
 )
 
 // TestHealthCheck 测试健康检查接口

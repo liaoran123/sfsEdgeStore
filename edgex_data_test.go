@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"sfsdb-edgex-adapter-enterprise/database"
-	"sfsdb-edgex-adapter-enterprise/edgex"
+	"sfsEdgeStore/database"
+	"sfsEdgeStore/edgex"
 
 	"github.com/liaoran123/sfsDb/engine"
 	"github.com/liaoran123/sfsDb/storage"

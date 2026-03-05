@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"sfsdb-edgex-adapter-enterprise/config"
-	"sfsdb-edgex-adapter-enterprise/database"
-	"sfsdb-edgex-adapter-enterprise/edgex"
-	"sfsdb-edgex-adapter-enterprise/monitor"
-	"sfsdb-edgex-adapter-enterprise/mqtt"
-	"sfsdb-edgex-adapter-enterprise/queue"
+	"sfsEdgeStore/config"
+	"sfsEdgeStore/database"
+	"sfsEdgeStore/edgex"
+	"sfsEdgeStore/monitor"
+	"sfsEdgeStore/mqtt"
+	"sfsEdgeStore/queue"
 )
 
 // TestMQTTIntegration 测试与 MQTT 消息总线的集成

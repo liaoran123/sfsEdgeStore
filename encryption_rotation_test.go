@@ -8,10 +8,10 @@ import (
 	"net/http"
 	"time"
 
-	"sfsdb-edgex-adapter-enterprise/config"
-	"sfsdb-edgex-adapter-enterprise/database"
-	"sfsdb-edgex-adapter-enterprise/monitor"
-	"sfsdb-edgex-adapter-enterprise/server"
+	"sfsEdgeStore/config"
+	"sfsEdgeStore/database"
+	"sfsEdgeStore/monitor"
+	"sfsEdgeStore/server"
 )
 
 func mainEncryption() {
