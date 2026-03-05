@@ -6,6 +6,7 @@ import (
 	"os"
 	"sfsdb-edgex-adapter/config"
 	"sfsdb-edgex-adapter/database"
+	"sfsdb-edgex-adapter/edgex"
 	"testing"
 	"time"
 )
@@ -57,13 +58,13 @@ func TestPerformance(t *testing.T) {
 	// 执行测试
 	for i := 0; i < testCount; i++ {
 		// 解析消息
-		var edgexMsg EdgeXMessage
+		var edgexMsg edgex.EdgeXMessage
 		if err := json.Unmarshal([]byte(testMessage), &edgexMsg); err != nil {
 			t.Fatalf("Failed to parse EdgeX message: %v", err)
 		}
 
 		// 解析 payload
-		var event EdgeXEvent
+		var event edgex.EdgeXEvent
 		if err := json.Unmarshal(edgexMsg.Payload, &event); err != nil {
 			t.Fatalf("Failed to parse event: %v", err)
 		}
@@ -85,7 +86,7 @@ func TestPerformance(t *testing.T) {
 				"deviceName": event.DeviceName,
 				"reading":    reading.ResourceName,
 				"value":      value,
-				"timestamp":  reading.Origin / 1000000000, // 转换为秒
+				"timestamp":  reading.Origin, // 纳秒级时间戳
 				"metadata":   metadataStr,
 			}
 
@@ -155,13 +156,13 @@ func TestMemoryUsage(t *testing.T) {
 	// 执行测试
 	for i := 0; i < testCount; i++ {
 		// 解析消息
-		var edgexMsg EdgeXMessage
+		var edgexMsg edgex.EdgeXMessage
 		if err := json.Unmarshal([]byte(testMessage), &edgexMsg); err != nil {
 			t.Fatalf("Failed to parse EdgeX message: %v", err)
 		}
 
 		// 解析 payload
-		var event EdgeXEvent
+		var event edgex.EdgeXEvent
 		if err := json.Unmarshal(edgexMsg.Payload, &event); err != nil {
 			t.Fatalf("Failed to parse event: %v", err)
 		}
@@ -183,7 +184,7 @@ func TestMemoryUsage(t *testing.T) {
 				"deviceName": event.DeviceName,
 				"reading":    reading.ResourceName,
 				"value":      value,
-				"timestamp":  reading.Origin / 1000000000, // 转换为秒
+				"timestamp":  reading.Origin, // 纳秒级时间戳
 				"metadata":   metadataStr,
 			}
 

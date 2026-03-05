@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"sfsdb-edgex-adapter/database"
+	"sfsdb-edgex-adapter/edgex"
 
 	"github.com/liaoran123/sfsDb/engine"
 	"github.com/liaoran123/sfsDb/storage"
@@ -67,14 +68,14 @@ func TestQueryReadingsWithEdgeXData(t *testing.T) {
 
 	// 模拟 EdgeX 真实数据
 	now := time.Now()
-	
+
 	// 插入测试数据
 	insertedCount := 0
 
 	// 插入 Thermostat-001 的数据
 	for i := 0; i < 2; i++ {
 		timestamp := now.Add(time.Duration(i) * time.Minute).Unix()
-		
+
 		// 温度数据
 		data1 := map[string]any{
 			"id":         fmt.Sprintf("temp-%d", i),
@@ -198,14 +199,14 @@ func TestQueryReadingsWithEdgeXData(t *testing.T) {
 		}`
 
 		// 解析 EdgeX 消息
-		var edgexMessage EdgeXMessage
+		var edgexMessage edgex.EdgeXMessage
 		err := json.Unmarshal([]byte(edgexMessageJSON), &edgexMessage)
 		if err != nil {
 			t.Fatalf("解析 EdgeX 消息失败: %v", err)
 		}
 
 		// 解析 payload
-		var edgexEvent EdgeXEvent
+		var edgexEvent edgex.EdgeXEvent
 		err = json.Unmarshal(edgexMessage.Payload, &edgexEvent)
 		if err != nil {
 			t.Fatalf("解析 EdgeX 事件失败: %v", err)

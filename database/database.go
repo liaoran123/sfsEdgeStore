@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sfsdb-edgex-adapter/common"
 	"time"
 
 	"github.com/liaoran123/sfsDb/engine"
@@ -26,7 +27,15 @@ func Init(dbPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open database: %v", err)
 	}
-
+	/*
+		   FormatDeviceName 格式化设备名称，确保长度为64字符
+		   可以通过util的
+		    RegisterTypeSize("string", func(value any) int {
+			// 固定string类型大小为64
+			return 64
+		})
+		即可添加其他二级索引，如果需要的话。（组合主键必须是固定长度的字段，字符串是不定长类型，需要通过RegisterTypeSize注册固定大小）
+	*/
 	// 创建或获取表
 	tableName := "edgex_readings"
 	var createErr error
@@ -117,8 +126,12 @@ func BatchInsertWithRetry(tbl *engine.Table, records []*map[string]any, maxRetri
 
 // QueryRecords 查询记录数据
 func QueryRecords(tbl *engine.Table, deviceName, startTime, endTime string) (record.Records, error) {
+	// 格式化设备名称，确保长度为64字符
+	formattedDeviceName := common.FormatDeviceName(deviceName)
+
 	log.Println("Querying readings with filters:")
 	log.Printf("  deviceName: %s", deviceName)
+	log.Printf("  formattedDeviceName: %s", formattedDeviceName)
 	log.Printf("  startTime: %s", startTime)
 	log.Printf("  endTime: %s", endTime)
 
@@ -129,7 +142,7 @@ func QueryRecords(tbl *engine.Table, deviceName, startTime, endTime string) (rec
 	if startTime != "" {
 		start, err := time.Parse(time.RFC3339, startTime)
 		if err == nil {
-			ts := start.Unix()
+			ts := start.UnixNano()
 			startTimestamp = &ts
 		}
 	}
@@ -138,7 +151,7 @@ func QueryRecords(tbl *engine.Table, deviceName, startTime, endTime string) (rec
 	if endTime != "" {
 		end, err := time.Parse(time.RFC3339, endTime)
 		if err == nil {
-			ts := end.Unix()
+			ts := end.UnixNano()
 			endTimestamp = &ts
 		}
 	}
@@ -149,8 +162,8 @@ func QueryRecords(tbl *engine.Table, deviceName, startTime, endTime string) (rec
 
 	// 利用组合主键 (deviceName + timestamp) 进行更高效的查询
 	// 设置设备名称
-	startRange["deviceName"] = deviceName
-	endRange["deviceName"] = deviceName
+	startRange["deviceName"] = formattedDeviceName
+	endRange["deviceName"] = formattedDeviceName
 
 	// 设置时间范围
 	if startTimestamp != nil {

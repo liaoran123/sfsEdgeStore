@@ -18,6 +18,7 @@ type Config struct {
 	MQTTBroker string `json:"mqtt_broker" env:"EDGEX_MQTT_BROKER"`
 	MQTTTopic  string `json:"mqtt_topic" env:"EDGEX_MQTT_TOPIC"`
 	ClientID   string `json:"client_id" env:"EDGEX_CLIENT_ID"`
+	HTTPPort   string `json:"http_port" env:"EDGEX_HTTP_PORT"`
 }
 
 // Load 加载配置
@@ -28,6 +29,7 @@ func Load() (*Config, error) {
 		MQTTBroker: "tcp://localhost:1883",
 		MQTTTopic:  "edgex/events/core/#",
 		ClientID:   generateClientID(),
+		HTTPPort:   "8081", // 默认HTTP端口
 	}
 
 	// 2. 尝试从EdgeX配置中心加载

@@ -8,6 +8,7 @@ import (
 
 	"sfsdb-edgex-adapter/config"
 	"sfsdb-edgex-adapter/database"
+	"sfsdb-edgex-adapter/edgex"
 )
 
 // TestInvalidMessageFormat 测试无效的消息格式
@@ -32,7 +33,7 @@ func TestInvalidMessageFormat(t *testing.T) {
 	invalidJSON := `invalid json format`
 
 	// 解析消息
-	var edgexMsg EdgeXMessage
+	var edgexMsg edgex.EdgeXMessage
 	if err := json.Unmarshal([]byte(invalidJSON), &edgexMsg); err == nil {
 		t.Errorf("Expected error when parsing invalid JSON, but got none")
 	}
@@ -67,13 +68,13 @@ func TestInvalidPayloadFormat(t *testing.T) {
 	}`
 
 	// 解析消息
-	var edgexMsg EdgeXMessage
+	var edgexMsg edgex.EdgeXMessage
 	if err := json.Unmarshal([]byte(message), &edgexMsg); err != nil {
 		t.Fatalf("Failed to parse EdgeX message: %v", err)
 	}
 
 	// 解析 payload
-	var event EdgeXEvent
+	var event edgex.EdgeXEvent
 	if err := json.Unmarshal(edgexMsg.Payload, &event); err == nil {
 		t.Errorf("Expected error when parsing invalid payload, but got none")
 	}
@@ -113,13 +114,13 @@ func TestEmptyReadings(t *testing.T) {
 	}`
 
 	// 解析消息
-	var edgexMsg EdgeXMessage
+	var edgexMsg edgex.EdgeXMessage
 	if err := json.Unmarshal([]byte(message), &edgexMsg); err != nil {
 		t.Fatalf("Failed to parse EdgeX message: %v", err)
 	}
 
 	// 解析 payload
-	var event EdgeXEvent
+	var event edgex.EdgeXEvent
 	if err := json.Unmarshal(edgexMsg.Payload, &event); err != nil {
 		t.Fatalf("Failed to parse event: %v", err)
 	}
@@ -171,13 +172,13 @@ func TestInvalidValueFormat(t *testing.T) {
 	}`
 
 	// 解析消息
-	var edgexMsg EdgeXMessage
+	var edgexMsg edgex.EdgeXMessage
 	if err := json.Unmarshal([]byte(message), &edgexMsg); err != nil {
 		t.Fatalf("Failed to parse EdgeX message: %v", err)
 	}
 
 	// 解析 payload
-	var event EdgeXEvent
+	var event edgex.EdgeXEvent
 	if err := json.Unmarshal(edgexMsg.Payload, &event); err != nil {
 		t.Fatalf("Failed to parse event: %v", err)
 	}
