@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sfsdb-edgex-adapter-enterprise/common"
 	"time"
 
 	"github.com/liaoran123/sfsDb/engine"
@@ -14,19 +15,53 @@ import (
 // Table 全局表实例
 var Table *engine.Table
 
+// AuthTable 认证表实例
+var AuthTable *engine.Table
+
 // Init 初始化数据库
-func Init(dbPath string) error {
+func Init(dbPath string, useEncryption bool, encryptionKey, algorithm string) error {
 	// 确保数据库目录存在
 	if err := os.MkdirAll(dbPath, 0755); err != nil {
 		return fmt.Errorf("failed to create database directory: %v", err)
 	}
 
 	// 打开数据库
-	_, err := storage.GetDBManager().OpenDB(dbPath)
+	var err error
+	if useEncryption {
+		if encryptionKey == "" {
+			return fmt.Errorf("encryption enabled but no encryption key provided")
+		}
+		// 生成32字节的加密密钥
+		masterKey := make([]byte, 32)
+		copy(masterKey, []byte(encryptionKey))
+		// 确保密钥长度为32字节
+		for i := len(encryptionKey); i < 32; i++ {
+			masterKey[i] = 0
+		}
+		// 创建加密配置
+		encryptConfig := &storage.EncryptionConfig{
+			Enabled:   true,
+			Algorithm: algorithm,
+			MasterKey: masterKey,
+		}
+		// 打开加密数据库
+		_, err = storage.GetDBManager().OpenDBWithEncryption(dbPath, encryptConfig)
+	} else {
+		// 打开普通数据库
+		_, err = storage.GetDBManager().OpenDB(dbPath)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to open database: %v", err)
 	}
-
+	/*
+		   FormatDeviceName 格式化设备名称，确保长度为64字符
+		   可以通过util的
+		    RegisterTypeSize("string", func(value any) int {
+			// 固定string类型大小为64
+			return 64
+		})
+		即可添加其他二级索引，如果需要的话。（组合主键必须是固定长度的字段，字符串是不定长类型，需要通过RegisterTypeSize注册固定大小）
+	*/
 	// 创建或获取表
 	tableName := "edgex_readings"
 	var createErr error
@@ -62,40 +97,87 @@ func Init(dbPath string) error {
 			return fmt.Errorf("failed to create primary key index: %v", err)
 		}
 	}
-	/*
-		//由于组合主键中包括deviceName不定长类型，所以不能单独创建其他索引
-		//如果业务确实需要使用单独索引，如按时间查询，则需要将组合主键更改为组合索引。时间戳为主键。
 
-		//现在的实现需要按设备和时间戳进行查询的场景性能最高，资源最少。权衡之下，是最优解。
+	// 创建认证表
+	authTableName := "edgex_auth"
+	AuthTable, createErr = engine.TableNew(authTableName)
+	if createErr != nil {
+		return fmt.Errorf("failed to create auth table: %v", createErr)
+	}
 
-				// 创建设备名称索引
-				deviceIndex, err := engine.DefaultNormalIndexNew("device_index")
-				if err != nil {
-					return fmt.Errorf("failed to create device index: %v", err)
-				}
-				deviceIndex.AddFields("deviceName")
-				if err := table.CreateIndex(deviceIndex); err != nil {
-					// 忽略索引已存在的错误
-					if err.Error() != "index already exists" {
-						return fmt.Errorf("failed to create device index: %v", err)
-					}
-				}
+	// 设置认证表字段
+	authFields := map[string]any{
+		"id":         "",
+		"key":        "",
+		"hash":       "",
+		"user_id":    "",
+		"role":       "",
+		"created_at": int64(0),
+		"expires_at": int64(0),
+		"active":     false,
+	}
+	if err := AuthTable.SetFields(authFields); err != nil {
+		return fmt.Errorf("failed to set auth table fields: %v", err)
+	}
 
-			// 创建时间戳索引
-			timeIndex, err := engine.DefaultNormalIndexNew("time_index")
-			if err != nil {
-				return fmt.Errorf("failed to create time index: %v", err)
-			}
-			timeIndex.AddFields("timestamp")
-			if err := table.CreateIndex(timeIndex); err != nil {
-				// 忽略索引已存在的错误
-				if err.Error() != "index already exists" {
-					return fmt.Errorf("failed to create time index: %v", err)
-				}
-			}
-	*/
+	// 创建认证表主键索引
+	authPrimaryKey, err := engine.DefaultPrimaryKeyNew("auth_pk")
+	if err != nil {
+		return fmt.Errorf("failed to create auth primary key: %v", err)
+	}
+	authPrimaryKey.AddFields("key") // 使用key作为主键
+	if err := AuthTable.CreateIndex(authPrimaryKey); err != nil {
+		// 忽略索引已存在的错误
+		if err.Error() != "index already exists" {
+			return fmt.Errorf("failed to create auth primary key index: %v", err)
+		}
+	}
+
 	log.Println("Database initialized successfully")
 	return nil
+}
+
+// RotateEncryptionKey 轮换加密密钥
+func RotateEncryptionKey(newKey string) error {
+	// 检查当前存储是否是加密的
+	store := storage.GetDBManager().GetDB()
+	if store == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	// 检查是否是加密存储
+	encryptedStore, ok := store.(*storage.EncryptedStoreWrapper)
+	if !ok {
+		return fmt.Errorf("database is not encrypted")
+	}
+
+	// 准备新密钥
+	masterKey := make([]byte, 32)
+	copy(masterKey, []byte(newKey))
+	for i := len(newKey); i < 32; i++ {
+		masterKey[i] = 0
+	}
+
+	// 执行密钥轮换
+	return encryptedStore.ReEncrypt(masterKey)
+}
+
+// GetEncryptionStatus 获取加密状态
+func GetEncryptionStatus() (bool, string, error) {
+	store := storage.GetDBManager().GetDB()
+	if store == nil {
+		return false, "", fmt.Errorf("database not initialized")
+	}
+
+	// 检查是否是加密存储
+	encryptedStore, ok := store.(*storage.EncryptedStoreWrapper)
+	if !ok {
+		return false, "", nil
+	}
+
+	// 获取加密配置
+	config := encryptedStore.GetEncryptionConfig()
+	return true, config.Algorithm, nil
 }
 
 // BatchInsertWithRetry 批量插入数据并带有重试机制，以防数据库暂时不可用。
@@ -117,8 +199,12 @@ func BatchInsertWithRetry(tbl *engine.Table, records []*map[string]any, maxRetri
 
 // QueryRecords 查询记录数据
 func QueryRecords(tbl *engine.Table, deviceName, startTime, endTime string) (record.Records, error) {
+	// 格式化设备名称，确保长度为64字符
+	formattedDeviceName := common.FormatDeviceName(deviceName)
+
 	log.Println("Querying readings with filters:")
 	log.Printf("  deviceName: %s", deviceName)
+	log.Printf("  formattedDeviceName: %s", formattedDeviceName)
 	log.Printf("  startTime: %s", startTime)
 	log.Printf("  endTime: %s", endTime)
 
@@ -129,7 +215,7 @@ func QueryRecords(tbl *engine.Table, deviceName, startTime, endTime string) (rec
 	if startTime != "" {
 		start, err := time.Parse(time.RFC3339, startTime)
 		if err == nil {
-			ts := start.Unix()
+			ts := start.UnixNano()
 			startTimestamp = &ts
 		}
 	}
@@ -138,7 +224,7 @@ func QueryRecords(tbl *engine.Table, deviceName, startTime, endTime string) (rec
 	if endTime != "" {
 		end, err := time.Parse(time.RFC3339, endTime)
 		if err == nil {
-			ts := end.Unix()
+			ts := end.UnixNano()
 			endTimestamp = &ts
 		}
 	}
@@ -149,8 +235,8 @@ func QueryRecords(tbl *engine.Table, deviceName, startTime, endTime string) (rec
 
 	// 利用组合主键 (deviceName + timestamp) 进行更高效的查询
 	// 设置设备名称
-	startRange["deviceName"] = deviceName
-	endRange["deviceName"] = deviceName
+	startRange["deviceName"] = formattedDeviceName
+	endRange["deviceName"] = formattedDeviceName
 
 	// 设置时间范围
 	if startTimestamp != nil {
@@ -175,4 +261,29 @@ func QueryRecords(tbl *engine.Table, deviceName, startTime, endTime string) (rec
 	// 获取记录
 	records := iter.GetRecords(true)
 	return records, nil
+}
+
+// ExportTableToCSV 导出表数据为CSV格式
+func ExportTableToCSV(tbl *engine.Table, filePath string) error {
+	return tbl.ExportToCSV(filePath)
+}
+
+// ImportTableFromCSV 从CSV文件导入数据到表
+func ImportTableFromCSV(tbl *engine.Table, filePath string, batchSize int) error {
+	return tbl.ImportFromCSV(filePath, batchSize)
+}
+
+// ExportTableToJSON 导出表数据为JSON格式
+func ExportTableToJSON(tbl *engine.Table, filePath string) error {
+	return tbl.ExportToJSON(filePath)
+}
+
+// ImportTableFromJSON 从JSON文件导入数据到表
+func ImportTableFromJSON(tbl *engine.Table, filePath string, batchSize int) error {
+	return tbl.ImportFromJSON(filePath, batchSize)
+}
+
+// ExportTableToSQL 导出表数据为SQL格式
+func ExportTableToSQL(tbl *engine.Table, filePath string) error {
+	return tbl.ExportToSQL(filePath)
 }

@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
-	"sfsdb-edgex-adapter/database"
+	"sfsdb-edgex-adapter-enterprise/database"
 	"testing"
 	"time"
 

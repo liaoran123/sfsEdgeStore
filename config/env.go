@@ -17,7 +17,20 @@ func loadFromEnv(cfg *Config) {
 		envTag := field.Tag.Get("env")
 		if envTag != "" {
 			if value := os.Getenv(envTag); value != "" {
-				v.Field(i).SetString(value)
+				// 根据字段类型进行不同的处理
+				switch v.Field(i).Kind() {
+				case reflect.Bool:
+					// 处理布尔类型
+					switch value {
+					case "true", "1":
+						v.Field(i).SetBool(true)
+					case "false", "0":
+						v.Field(i).SetBool(false)
+					}
+				case reflect.String:
+					// 处理字符串类型
+					v.Field(i).SetString(value)
+				}
 				log.Printf("Loaded %s from environment variable: %s", field.Name, value)
 			}
 		}

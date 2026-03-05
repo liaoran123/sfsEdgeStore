@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package proto;
+
+message Reading {
+  string id = 1;
+  string deviceName = 2;
+  string reading = 3;
+  double value = 4;
+  string valueType = 5;
+  string baseType = 6;
+  int64 timestamp = 7;
+  string metadata = 8;
+}
+
+message Readings {
+  int32 count = 1;
+  repeated Reading readings = 2;
+}
