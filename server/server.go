@@ -21,7 +21,6 @@ import (
 )
 
 // Server 结构
-
 type Server struct {
 	Table   *engine.Table
 	Config  *config.Config

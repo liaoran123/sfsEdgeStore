@@ -54,9 +54,9 @@ func Init(dbPath string, useEncryption bool, encryptionKey, algorithm string) er
 		return fmt.Errorf("failed to open database: %v", err)
 	}
 	/*
-		   FormatDeviceName 格式化设备名称，确保长度为64字符
-		   可以通过util的
-		    RegisterTypeSize("string", func(value any) int {
+	   FormatDeviceName 格式化设备名称，确保长度为64字符
+	   可以通过util的
+	    RegisterTypeSize("string", func(value any) int {
 			// 固定string类型大小为64
 			return 64
 		})
