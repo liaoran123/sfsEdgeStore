@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"sfsdb-edgex-adapter-enterprise/config"
-	timeutil "sfsdb-edgex-adapter-enterprise/time"
+	"sfsEdgeStore/config"
+	timeutil "sfsEdgeStore/time"
 )
 
 // Analyzer 轻量级分析引擎

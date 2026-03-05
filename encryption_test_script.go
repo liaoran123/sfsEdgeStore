@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 	"log"
-	"sfsdb-edgex-adapter-enterprise/config"
-	"sfsdb-edgex-adapter-enterprise/database"
+	"sfsEdgeStore/config"
+	"sfsEdgeStore/database"
 )
 
 func mainencryption() {

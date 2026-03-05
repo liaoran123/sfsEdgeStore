@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"sfsdb-edgex-adapter-enterprise/database"
+	"sfsEdgeStore/database"
 )
 
 // AuthManager 认证管理器

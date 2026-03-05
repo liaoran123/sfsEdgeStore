@@ -1,9 +1,9 @@
-# sfsDb EdgeX Adapter
+# sfsEdgeStore
 
 [中文版本 (Chinese Version)](README_CN.md)
 
 ## Overview
-The sfsDb EdgeX Adapter provides seamless integration between EdgeX Foundry and sfsDb embedded database, enabling efficient storage and retrieval of device data at the edge. This adapter follows EdgeX Foundry best practices and standards for edge computing solutions.
+sfsEdgeStore provides seamless integration between EdgeX Foundry and sfsDb embedded database, enabling efficient storage and retrieval of device data at the edge. This adapter follows EdgeX Foundry best practices and standards for edge computing solutions.
 
 ## Features
 - **EdgeX Foundry Compatible**: Implements EdgeX MessageEnvelope format and MQTT message bus integration
@@ -25,14 +25,14 @@ The sfsDb EdgeX Adapter provides seamless integration between EdgeX Foundry and 
 
 ### Build from Source
 ```bash
-git clone https://github.com/your-org/sfsdb-edgex-adapter.git
-cd sfsdb-edgex-adapter
+git clone https://github.com/your-org/sfsEdgeStore.git
+cd sfsEdgeStore
 go build
 ```
 
 ### Run the Adapter
 ```bash
-./sfsdb-edgex-adapter
+./sfsEdgeStore
 ```
 
 ### Default Configuration

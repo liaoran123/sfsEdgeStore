@@ -12,13 +12,13 @@ import (
 	"strings"
 	"time"
 
-	"sfsdb-edgex-adapter-enterprise/analyzer"
-	"sfsdb-edgex-adapter-enterprise/common"
-	"sfsdb-edgex-adapter-enterprise/config"
-	"sfsdb-edgex-adapter-enterprise/database"
-	"sfsdb-edgex-adapter-enterprise/edgex"
-	"sfsdb-edgex-adapter-enterprise/monitor"
-	"sfsdb-edgex-adapter-enterprise/queue"
+	"sfsEdgeStore/analyzer"
+	"sfsEdgeStore/common"
+	"sfsEdgeStore/config"
+	"sfsEdgeStore/database"
+	"sfsEdgeStore/edgex"
+	"sfsEdgeStore/monitor"
+	"sfsEdgeStore/queue"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )

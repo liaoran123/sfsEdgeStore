@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"log"
 
-	"sfsdb-edgex-adapter-enterprise/common"
+	"sfsEdgeStore/common"
 )
 
 // ProcessMessage 处理EdgeX消息

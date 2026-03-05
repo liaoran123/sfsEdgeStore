@@ -9,15 +9,15 @@ import (
 	"syscall"
 	"time"
 
-	"sfsdb-edgex-adapter-enterprise/agent"
-	"sfsdb-edgex-adapter-enterprise/analyzer"
-	"sfsdb-edgex-adapter-enterprise/auth"
-	"sfsdb-edgex-adapter-enterprise/config"
-	"sfsdb-edgex-adapter-enterprise/database"
-	"sfsdb-edgex-adapter-enterprise/monitor"
-	"sfsdb-edgex-adapter-enterprise/mqtt"
-	"sfsdb-edgex-adapter-enterprise/queue"
-	"sfsdb-edgex-adapter-enterprise/server"
+	"sfsEdgeStore/agent"
+	"sfsEdgeStore/analyzer"
+	"sfsEdgeStore/auth"
+	"sfsEdgeStore/config"
+	"sfsEdgeStore/database"
+	"sfsEdgeStore/monitor"
+	"sfsEdgeStore/mqtt"
+	"sfsEdgeStore/queue"
+	"sfsEdgeStore/server"
 )
 
 var appConfig *config.Config

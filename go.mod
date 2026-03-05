@@ -1,4 +1,4 @@
-module sfsdb-edgex-adapter-enterprise
+module sfsEdgeStore
 
 go 1.25.3
 

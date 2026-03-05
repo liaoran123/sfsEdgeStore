@@ -7,8 +7,8 @@ import (
 	"os/exec"
 	"time"
 
-	"sfsdb-edgex-adapter-enterprise/config"
-	"sfsdb-edgex-adapter-enterprise/monitor"
+	"sfsEdgeStore/config"
+	"sfsEdgeStore/monitor"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
