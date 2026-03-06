@@ -76,6 +76,10 @@ type Config struct {
 	// Prometheus 指标配置（可选，默认关闭）
 	EnablePrometheus bool   `json:"enable_prometheus" env:"EDGEX_ENABLE_PROMETHEUS"`
 	PrometheusPath   string `json:"prometheus_path" env:"EDGEX_PROMETHEUS_PATH"`
+	// 模拟器配置
+	EnableSimulator       bool          `json:"enable_simulator" env:"EDGEX_ENABLE_SIMULATOR"`
+	SimulatorIntervalMin  int           `json:"simulator_interval_min" env:"EDGEX_SIMULATOR_INTERVAL_MIN"`
+	SimulatorIntervalMax  int           `json:"simulator_interval_max" env:"EDGEX_SIMULATOR_INTERVAL_MAX"`
 }
 
 // ThresholdConfig 阈值配置
@@ -241,6 +245,10 @@ func Load() (*Config, error) {
 		// Prometheus 指标默认值（默认关闭，避免性能影响）
 		EnablePrometheus: false,
 		PrometheusPath:   "/metrics",
+		// 模拟器默认配置（默认关闭）
+		EnableSimulator:      false,
+		SimulatorIntervalMin: 2,
+		SimulatorIntervalMax: 5,
 	}
 
 	// 2. 尝试从EdgeX配置中心加载

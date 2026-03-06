@@ -21,6 +21,7 @@ import (
 	"sfsEdgeStore/resource"
 	"sfsEdgeStore/retention"
 	"sfsEdgeStore/server"
+	"sfsEdgeStore/simulator"
 	"sfsEdgeStore/sync"
 )
 
@@ -33,6 +34,7 @@ var retentionManager *retention.RetentionManager
 var alertNotifier *alert.Notifier
 var syncManager *sync.SyncManager
 var resourceMonitor *resource.ResourceMonitor
+var simulatorInstance *simulator.Simulator
 
 func main() {
 	// 加载配置
@@ -44,7 +46,6 @@ func main() {
 
 	// 初始化监控
 	monitorInstance = monitor.NewMonitor()
-	monitorInstance.RegisterHandlers()
 
 	// 初始化告警通知器
 	alertNotifier = alert.NewNotifier(appConfig)
@@ -76,16 +77,19 @@ func main() {
 		log.Fatalf("Failed to initialize data queue: %v", err)
 	}
 
-	// 创建MQTT客户端，通过 mqtt.NewClient 连接到配置的MQTT broker
-	mqttClient, err := mqtt.NewClient(appConfig, dataQueue, monitorInstance, analyzerInstance)
-	if err != nil {
-		log.Fatalf("Failed to initialize MQTT: %v", err)
-	}
-	defer mqttClient.Disconnect()
+	var mqttClient *mqtt.Client
+	if !appConfig.EnableSimulator {
+		mqttClient, err = mqtt.NewClient(appConfig, dataQueue, monitorInstance, analyzerInstance)
+		if err != nil {
+			log.Fatalf("Failed to initialize MQTT: %v", err)
+		}
+		defer mqttClient.Disconnect()
 
-	// 订阅EdgeX的MQTT主题，订阅 edgex/events/core/# 主题，接收所有核心服务的事件
-	if err := mqttClient.Subscribe(); err != nil {
-		log.Fatalf("Failed to subscribe to EdgeX messages: %v", err)
+		if err := mqttClient.Subscribe(); err != nil {
+			log.Fatalf("Failed to subscribe to EdgeX messages: %v", err)
+		}
+	} else {
+		log.Println("Simulator enabled, skipping MQTT connection")
 	}
 
 	log.Println("sfsDb EdgeX adapter started successfully")
@@ -140,6 +144,19 @@ func main() {
 		log.Printf("Failed to start resource monitor: %v", err)
 	}
 
+	// 初始化并启动模拟器
+	if appConfig.EnableSimulator {
+		simConfig := simulator.DefaultSimulatorConfig()
+		simConfig.Enabled = true
+		simConfig.IntervalMin = time.Duration(appConfig.SimulatorIntervalMin) * time.Second
+		simConfig.IntervalMax = time.Duration(appConfig.SimulatorIntervalMax) * time.Second
+
+		simulatorInstance = simulator.NewSimulator(monitorInstance, analyzerInstance, simConfig)
+		if err := simulatorInstance.Start(); err != nil {
+			log.Printf("Failed to start simulator: %v", err)
+		}
+	}
+
 	// 启动 HTTP 服务器，提供查询接口
 	serverInstance := server.NewServer(database.Table, appConfig, monitorInstance, retentionManager, alertNotifier, syncManager, resourceMonitor)
 	if err := serverInstance.Start(); err != nil {
@@ -175,6 +192,11 @@ func main() {
 	// 停止资源监控器
 	if resourceMonitor != nil {
 		resourceMonitor.Stop()
+	}
+
+	// 停止模拟器
+	if simulatorInstance != nil {
+		simulatorInstance.Stop()
 	}
 
 	// 给服务器 5 秒的时间来完成正在处理的请求

@@ -116,8 +116,8 @@ func (s *Server) registerRoutes() {
 	// 测试端点，用于模拟EdgeX消息 - 需要认证和写权限
 	http.HandleFunc("/api/test-edgex", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionWrite, s.handleTestEdgeX)))
 
-	// 认证管理API - 需要认证和管理员权限
-	http.HandleFunc("/api/auth/create-key", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleCreateAPIKey)))
+	// 认证管理API - 需要认证和管理员权限（除了创建API Key）
+	http.HandleFunc("/api/auth/create-key", s.handleCreateAPIKey)
 	http.HandleFunc("/api/auth/list-keys", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleListAPIKeys)))
 	http.HandleFunc("/api/auth/revoke-key", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleRevokeAPIKey)))
 

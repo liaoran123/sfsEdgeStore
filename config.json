@@ -1,0 +1,10 @@
+{
+  "mqtt_broker": "tcp://localhost:1883",
+  "mqtt_topic": "edgex/events/core/#",
+  "client_id": "sfsedgestore",
+  "db_path": "./edgex_data",
+  "http_port": "8081",
+  "enable_simulator": false,
+  "simulator_interval_min": 2,
+  "simulator_interval_max": 5
+}
