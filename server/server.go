@@ -15,6 +15,7 @@ import (
 	"sfsEdgeStore/database"
 	"sfsEdgeStore/edgex"
 	"sfsEdgeStore/monitor"
+	"sfsEdgeStore/retention"
 
 	"github.com/liaoran123/sfsDb/engine"
 	"github.com/liaoran123/sfsDb/storage"
@@ -22,17 +23,19 @@ import (
 
 // Server 结构
 type Server struct {
-	Table   *engine.Table
-	Config  *config.Config
-	Monitor *monitor.Monitor
+	Table        *engine.Table
+	Config       *config.Config
+	Monitor      *monitor.Monitor
+	RetentionMgr *retention.RetentionManager
 }
 
 // NewServer 创建一个新的服务器实例
-func NewServer(table *engine.Table, cfg *config.Config, monitor *monitor.Monitor) *Server {
+func NewServer(table *engine.Table, cfg *config.Config, monitor *monitor.Monitor, retentionMgr *retention.RetentionManager) *Server {
 	return &Server{
-		Table:   table,
-		Config:  cfg,
-		Monitor: monitor,
+		Table:        table,
+		Config:       cfg,
+		Monitor:      monitor,
+		RetentionMgr: retentionMgr,
 	}
 }
 
@@ -116,6 +119,10 @@ func (s *Server) registerRoutes() {
 	http.HandleFunc("/api/import/json", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionRestore, s.handleImportJSON)))
 	// 数据格式参数化API - 需要认证和备份权限
 	http.HandleFunc("/api/data/export", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionBackup, s.handleDataExport)))
+
+	// 数据保留策略API - 需要认证和管理员权限
+	http.HandleFunc("/api/retention/status", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleRetentionStatus)))
+	http.HandleFunc("/api/retention/cleanup", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleManualCleanup)))
 }
 
 // handleQueryReadings 处理数据查询请求
@@ -830,4 +837,61 @@ func (s *Server) handleDataExport(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Unsupported format"})
 	}
+}
+
+// handleRetentionStatus 处理获取保留策略状态请求
+func (s *Server) handleRetentionStatus(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor != nil {
+		s.Monitor.IncrementHTTPRequests()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.RetentionMgr == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Retention manager not initialized"})
+		return
+	}
+
+	status := s.RetentionMgr.GetRetentionStatus()
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "success",
+		"data":   status,
+	})
+}
+
+// handleManualCleanup 处理手动数据清理请求
+func (s *Server) handleManualCleanup(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor != nil {
+		s.Monitor.IncrementHTTPRequests()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	if s.RetentionMgr == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Retention manager not initialized"})
+		return
+	}
+
+	log.Println("Starting manual data cleanup")
+	deleted, err := s.RetentionMgr.CleanupOldData()
+	if err != nil {
+		log.Printf("Manual cleanup failed: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	log.Printf("Manual cleanup completed, deleted %d records", deleted)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":        "success",
+		"deleted_count": deleted,
+	})
 }

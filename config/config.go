@@ -28,14 +28,19 @@ type Config struct {
 	HTTPCert       string `json:"http_cert" env:"EDGEX_HTTP_CERT"`
 	HTTPKey        string `json:"http_key" env:"EDGEX_HTTP_KEY"`
 	// 数据库加密配置
-	DBUseEncryption bool   `json:"db_use_encryption" env:"EDGEX_DB_USE_ENCRYPTION"`
-	DBEncryptionKey string `json:"db_encryption_key" env:"EDGEX_DB_ENCRYPTION_KEY"`
+	DBUseEncryption       bool   `json:"db_use_encryption" env:"EDGEX_DB_USE_ENCRYPTION"`
+	DBEncryptionKey       string `json:"db_encryption_key" env:"EDGEX_DB_ENCRYPTION_KEY"`
 	DBEncryptionAlgorithm string `json:"db_encryption_algorithm" env:"EDGEX_DB_ENCRYPTION_ALGORITHM"`
 	// 分析引擎配置
-	EnableAnalyzer     bool              `json:"enable_analyzer" env:"EDGEX_ENABLE_ANALYZER"`
-	AnalyzerMaxMemory  int               `json:"analyzer_max_memory" env:"EDGEX_ANALYZER_MAX_MEMORY"`
-	AnalyzerMaxTimePerRun int            `json:"analyzer_max_time_per_run" env:"EDGEX_ANALYZER_MAX_TIME_PER_RUN"`
-	AnalyzerThresholds  map[string]ThresholdConfig `json:"analyzer_thresholds"`
+	EnableAnalyzer        bool                       `json:"enable_analyzer" env:"EDGEX_ENABLE_ANALYZER"`
+	AnalyzerMaxMemory     int                        `json:"analyzer_max_memory" env:"EDGEX_ANALYZER_MAX_MEMORY"`
+	AnalyzerMaxTimePerRun int                        `json:"analyzer_max_time_per_run" env:"EDGEX_ANALYZER_MAX_TIME_PER_RUN"`
+	AnalyzerThresholds    map[string]ThresholdConfig `json:"analyzer_thresholds"`
+	// 数据保留策略配置
+	EnableRetentionPolicy bool `json:"enable_retention_policy" env:"EDGEX_ENABLE_RETENTION_POLICY"`
+	RetentionDays         int  `json:"retention_days" env:"EDGEX_RETENTION_DAYS"`
+	CleanupInterval       int  `json:"cleanup_interval_hours" env:"EDGEX_CLEANUP_INTERVAL_HOURS"`
+	CleanupBatchSize      int  `json:"cleanup_batch_size" env:"EDGEX_CLEANUP_BATCH_SIZE"`
 }
 
 // ThresholdConfig 阈值配置
@@ -57,13 +62,18 @@ func Load() (*Config, error) {
 		MQTTUseTLS: false,
 		HTTPUseTLS: false,
 		// 数据库加密默认值
-		DBUseEncryption: false,
+		DBUseEncryption:       false,
 		DBEncryptionAlgorithm: "AES-256-GCM",
 		// 分析引擎默认值
-		EnableAnalyzer:     false,
-		AnalyzerMaxMemory:  10485760, // 10MB
-		AnalyzerMaxTimePerRun: 500,    // 500ms
-		AnalyzerThresholds:  make(map[string]ThresholdConfig),
+		EnableAnalyzer:        false,
+		AnalyzerMaxMemory:     10485760, // 10MB
+		AnalyzerMaxTimePerRun: 500,      // 500ms
+		AnalyzerThresholds:    make(map[string]ThresholdConfig),
+		// 数据保留策略默认值
+		EnableRetentionPolicy: false,
+		RetentionDays:         30,   // 默认保留30天数据
+		CleanupInterval:       24,   // 默认每24小时清理一次
+		CleanupBatchSize:      1000, // 默认每批清理1000条记录
 	}
 
 	// 2. 尝试从EdgeX配置中心加载
