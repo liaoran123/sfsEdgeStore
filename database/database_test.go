@@ -50,7 +50,8 @@ func TestInsertAndQuery(t *testing.T) {
 		"metadata":   "{\"location\": \"room1\"}",
 	}
 
-	_, err = Table.Insert(&testData)
+	testRecords := []*map[string]any{&testData}
+	err = BatchInsertWithRetry(Table, testRecords, 3, 100*time.Millisecond)
 	if err != nil {
 		t.Fatalf("Failed to insert test data: %v", err)
 	}
@@ -65,8 +66,13 @@ func TestInsertAndQuery(t *testing.T) {
 	}
 
 	insertedRecord := records[0]
-	if insertedRecord["value"] != testData["value"] {
-		t.Fatalf("Value mismatch: got %v, want %v", insertedRecord["value"], testData["value"])
+	insertedValue, ok := insertedRecord["value"].(float64)
+	if !ok {
+		t.Fatalf("Value is not float64: %T", insertedRecord["value"])
+	}
+	testValue := testData["value"].(float64)
+	if insertedValue != testValue {
+		t.Fatalf("Value mismatch: got %v, want %v", insertedValue, testValue)
 	}
 
 	t.Log("Insert and query test passed successfully")
@@ -94,7 +100,8 @@ func TestAuthTableOperations(t *testing.T) {
 		"active":     true,
 	}
 
-	_, err = AuthTable.Insert(&authData)
+	authRecords := []*map[string]any{&authData}
+	_, err = AuthTable.BatchInsertNoInc(authRecords)
 	if err != nil {
 		t.Fatalf("Failed to insert auth data: %v", err)
 	}
