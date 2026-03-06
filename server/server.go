@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"sfsEdgeStore/alert"
 	"sfsEdgeStore/auth"
 	"sfsEdgeStore/backup"
 	"sfsEdgeStore/common"
@@ -16,6 +17,8 @@ import (
 	"sfsEdgeStore/edgex"
 	"sfsEdgeStore/monitor"
 	"sfsEdgeStore/retention"
+	"sfsEdgeStore/resource"
+	"sfsEdgeStore/sync"
 
 	"github.com/liaoran123/sfsDb/engine"
 	"github.com/liaoran123/sfsDb/storage"
@@ -23,19 +26,25 @@ import (
 
 // Server 结构
 type Server struct {
-	Table        *engine.Table
-	Config       *config.Config
-	Monitor      *monitor.Monitor
-	RetentionMgr *retention.RetentionManager
+	Table           *engine.Table
+	Config          *config.Config
+	Monitor         *monitor.Monitor
+	RetentionMgr    *retention.RetentionManager
+	AlertNotifier   *alert.Notifier
+	SyncManager     *sync.SyncManager
+	ResourceMonitor *resource.ResourceMonitor
 }
 
 // NewServer 创建一个新的服务器实例
-func NewServer(table *engine.Table, cfg *config.Config, monitor *monitor.Monitor, retentionMgr *retention.RetentionManager) *Server {
+func NewServer(table *engine.Table, cfg *config.Config, monitor *monitor.Monitor, retentionMgr *retention.RetentionManager, alertNotifier *alert.Notifier, syncManager *sync.SyncManager, resourceMonitor *resource.ResourceMonitor) *Server {
 	return &Server{
-		Table:        table,
-		Config:       cfg,
-		Monitor:      monitor,
-		RetentionMgr: retentionMgr,
+		Table:           table,
+		Config:          cfg,
+		Monitor:         monitor,
+		RetentionMgr:    retentionMgr,
+		AlertNotifier:   alertNotifier,
+		SyncManager:     syncManager,
+		ResourceMonitor: resourceMonitor,
 	}
 }
 
@@ -123,6 +132,23 @@ func (s *Server) registerRoutes() {
 	// 数据保留策略API - 需要认证和管理员权限
 	http.HandleFunc("/api/retention/status", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleRetentionStatus)))
 	http.HandleFunc("/api/retention/cleanup", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleManualCleanup)))
+
+	// 告警通知API - 需要认证和管理员权限
+	http.HandleFunc("/api/alerts/notifier/status", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleAlertNotifierStatus)))
+	http.HandleFunc("/api/alerts/test", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleTestAlert)))
+
+	// 数据同步API - 需要认证和管理员权限
+	http.HandleFunc("/api/sync/status", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleSyncStatus)))
+	http.HandleFunc("/api/sync/start", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleSyncStart)))
+	http.HandleFunc("/api/sync/database", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleSyncFromDatabase)))
+
+	// 配置热更新API - 需要认证和管理员权限
+	http.HandleFunc("/api/config/get", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleGetConfig)))
+	http.HandleFunc("/api/config/update", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleUpdateConfig)))
+	http.HandleFunc("/api/config/reload", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleReloadConfig)))
+
+	// 资源监控API - 需要认证和管理员权限
+	http.HandleFunc("/api/resources/status", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleResourceStatus)))
 }
 
 // handleQueryReadings 处理数据查询请求
@@ -893,5 +919,283 @@ func (s *Server) handleManualCleanup(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":        "success",
 		"deleted_count": deleted,
+	})
+}
+
+// handleAlertNotifierStatus 处理获取告警通知器状态请求
+func (s *Server) handleAlertNotifierStatus(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor != nil {
+		s.Monitor.IncrementHTTPRequests()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.AlertNotifier == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Alert notifier not initialized"})
+		return
+	}
+
+	status := s.AlertNotifier.GetNotifierStatus()
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "success",
+		"data":   status,
+	})
+}
+
+// handleTestAlert 处理测试告警请求
+func (s *Server) handleTestAlert(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor != nil {
+		s.Monitor.IncrementHTTPRequests()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	if s.Monitor == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Monitor not initialized"})
+		return
+	}
+
+	var req struct {
+		Type     string `json:"type"`
+		Message  string `json:"message"`
+		Severity string `json:"severity"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	if req.Type == "" {
+		req.Type = "test"
+	}
+	if req.Message == "" {
+		req.Message = "Test alert notification"
+	}
+	if req.Severity == "" {
+		req.Severity = "warning"
+	}
+
+	s.Monitor.RecordError(req.Type, req.Message)
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "success",
+		"message": "Test alert sent",
+		"alert": map[string]string{
+			"type":     req.Type,
+			"message":  req.Message,
+			"severity": req.Severity,
+		},
+	})
+}
+
+// handleSyncStatus 处理获取同步状态请求
+func (s *Server) handleSyncStatus(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor != nil {
+		s.Monitor.IncrementHTTPRequests()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.SyncManager == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Sync manager not initialized"})
+		return
+	}
+
+	status := s.SyncManager.GetStatus()
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "success",
+		"data":   status,
+	})
+}
+
+// handleSyncStart 处理启动同步请求
+func (s *Server) handleSyncStart(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor != nil {
+		s.Monitor.IncrementHTTPRequests()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	if s.SyncManager == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Sync manager not initialized"})
+		return
+	}
+
+	if err := s.SyncManager.Start(); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "success",
+		"message": "Sync manager started",
+	})
+}
+
+// handleSyncFromDatabase 处理从数据库同步请求
+func (s *Server) handleSyncFromDatabase(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor != nil {
+		s.Monitor.IncrementHTTPRequests()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	if s.SyncManager == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Sync manager not initialized"})
+		return
+	}
+
+	var req struct {
+		StartTimestamp int64 `json:"start_timestamp"`
+		EndTimestamp   int64 `json:"end_timestamp"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	if err := s.SyncManager.SyncFromDatabase(req.StartTimestamp, req.EndTimestamp); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "success",
+		"message": "Database sync started",
+	})
+}
+
+// handleGetConfig 处理获取配置请求
+func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor != nil {
+		s.Monitor.IncrementHTTPRequests()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	configManager := config.GetConfigManager()
+	currentConfig := configManager.GetConfig()
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "success",
+		"data":   currentConfig,
+	})
+}
+
+// handleUpdateConfig 处理更新配置请求
+func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor != nil {
+		s.Monitor.IncrementHTTPRequests()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	var newConfig config.Config
+	if err := json.NewDecoder(r.Body).Decode(&newConfig); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	configManager := config.GetConfigManager()
+	if err := configManager.UpdateConfig(&newConfig); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "success",
+		"message": "Config updated successfully",
+	})
+}
+
+// handleReloadConfig 处理重新加载配置请求
+func (s *Server) handleReloadConfig(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor != nil {
+		s.Monitor.IncrementHTTPRequests()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	newConfig, err := config.ReloadFromFile()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	configManager := config.GetConfigManager()
+	if err := configManager.UpdateConfig(newConfig); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "success",
+		"message": "Config reloaded successfully",
+	})
+}
+
+// handleResourceStatus 处理获取资源状态请求
+func (s *Server) handleResourceStatus(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor != nil {
+		s.Monitor.IncrementHTTPRequests()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.ResourceMonitor == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Resource monitor not initialized"})
+		return
+	}
+
+	usage := s.ResourceMonitor.GetCurrentUsage()
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "success",
+		"data":   usage,
 	})
 }

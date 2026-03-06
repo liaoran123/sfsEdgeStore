@@ -3,7 +3,19 @@ package config
 import (
 	"log"
 	"os"
+	"sync"
 	"time"
+
+	"github.com/syndtr/goleveldb/leveldb/opt"
+)
+
+// 数据库场景常量
+const (
+	ScenarioEmbedded = "embedded"
+	ScenarioIoT      = "iot"
+	ScenarioEdge     = "edge"
+	ScenarioGame     = "game"
+	ScenarioDefault  = "default"
 )
 
 /*
@@ -41,12 +53,141 @@ type Config struct {
 	RetentionDays         int  `json:"retention_days" env:"EDGEX_RETENTION_DAYS"`
 	CleanupInterval       int  `json:"cleanup_interval_hours" env:"EDGEX_CLEANUP_INTERVAL_HOURS"`
 	CleanupBatchSize      int  `json:"cleanup_batch_size" env:"EDGEX_CLEANUP_BATCH_SIZE"`
+	// 告警通知配置
+	EnableAlertNotifications  bool     `json:"enable_alert_notifications" env:"EDGEX_ENABLE_ALERT_NOTIFICATIONS"`
+	AlertNotificationChannels []string `json:"alert_notification_channels" env:"EDGEX_ALERT_NOTIFICATION_CHANNELS"`
+	AlertMQTTTopic            string   `json:"alert_mqtt_topic" env:"EDGEX_ALERT_MQTT_TOPIC"`
+	AlertWebhookURL           string   `json:"alert_webhook_url" env:"EDGEX_ALERT_WEBHOOK_URL"`
+	AlertMinSeverity          string   `json:"alert_min_severity" env:"EDGEX_ALERT_MIN_SEVERITY"`
+	// 数据同步配置
+	EnableDataSync        bool   `json:"enable_data_sync" env:"EDGEX_ENABLE_DATA_SYNC"`
+	DataSyncMQTTTopic     string `json:"data_sync_mqtt_topic" env:"EDGEX_DATA_SYNC_MQTT_TOPIC"`
+	DataSyncQueueDir      string `json:"data_sync_queue_dir" env:"EDGEX_DATA_SYNC_QUEUE_DIR"`
+	DataSyncBatchSize     int    `json:"data_sync_batch_size" env:"EDGEX_DATA_SYNC_BATCH_SIZE"`
+	DataSyncInterval      int    `json:"data_sync_interval_seconds" env:"EDGEX_DATA_SYNC_INTERVAL_SECONDS"`
+	DataSyncMaxRetryCount int    `json:"data_sync_max_retry_count" env:"EDGEX_DATA_SYNC_MAX_RETRY_COUNT"`
+	// 资源使用监控配置
+	EnableResourceMonitoring bool    `json:"enable_resource_monitoring" env:"EDGEX_ENABLE_RESOURCE_MONITORING"`
+	MaxMemoryMB              float64 `json:"max_memory_mb" env:"EDGEX_MAX_MEMORY_MB"`
+	MaxCPUPercent            float64 `json:"max_cpu_percent" env:"EDGEX_MAX_CPU_PERCENT"`
+	ResourceMonitorInterval  int     `json:"resource_monitor_interval_seconds" env:"EDGEX_RESOURCE_MONITOR_INTERVAL_SECONDS"`
+	// 数据库场景配置
+	DBScenario string `json:"db_scenario" env:"EDGEX_DB_SCENARIO"`
 }
 
 // ThresholdConfig 阈值配置
 type ThresholdConfig struct {
 	Min float64 `json:"min"`
 	Max float64 `json:"max"`
+}
+
+// ConfigUpdateHandler 配置更新回调函数类型
+type ConfigUpdateHandler func(oldCfg, newCfg *Config)
+
+// ConfigManager 配置管理器
+type ConfigManager struct {
+	currentConfig  *Config
+	mutex          sync.RWMutex
+	updateHandlers []ConfigUpdateHandler
+}
+
+var configManager *ConfigManager
+var initOnce sync.Once
+
+// GetConfigManager 获取配置管理器单例
+func GetConfigManager() *ConfigManager {
+	initOnce.Do(func() {
+		configManager = &ConfigManager{
+			updateHandlers: make([]ConfigUpdateHandler, 0),
+		}
+	})
+	return configManager
+}
+
+// SetConfig 设置当前配置
+func (cm *ConfigManager) SetConfig(cfg *Config) {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+	cm.currentConfig = cfg
+}
+
+// GetConfig 获取当前配置
+func (cm *ConfigManager) GetConfig() *Config {
+	cm.mutex.RLock()
+	defer cm.mutex.RUnlock()
+	return cm.currentConfig
+}
+
+// RegisterUpdateHandler 注册配置更新回调
+func (cm *ConfigManager) RegisterUpdateHandler(handler ConfigUpdateHandler) {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+	cm.updateHandlers = append(cm.updateHandlers, handler)
+}
+
+// UpdateConfig 更新配置
+func (cm *ConfigManager) UpdateConfig(newCfg *Config) error {
+	cm.mutex.Lock()
+	oldCfg := cm.currentConfig
+	cm.currentConfig = newCfg
+	handlers := make([]ConfigUpdateHandler, len(cm.updateHandlers))
+	copy(handlers, cm.updateHandlers)
+	cm.mutex.Unlock()
+
+	// 保存配置到文件
+	if err := SaveToFile(newCfg); err != nil {
+		log.Printf("Failed to save config to file: %v", err)
+	}
+
+	// 通知所有更新处理器
+	for _, handler := range handlers {
+		handler(oldCfg, newCfg)
+	}
+
+	log.Println("Config updated successfully")
+	return nil
+}
+
+// GetScenarioOptions 根据场景获取数据库配置选项
+func (cm *ConfigManager) GetScenarioOptions() *opt.Options {
+	cfg := cm.GetConfig()
+	switch cfg.DBScenario {
+	case ScenarioEmbedded:
+		return &opt.Options{
+			WriteBuffer:            2 * 1024 * 1024,
+			OpenFilesCacheCapacity: 5,
+			BlockCacheCapacity:     4 * 1024 * 1024,
+			Compression:            opt.DefaultCompression,
+		}
+	case ScenarioIoT:
+		return &opt.Options{
+			WriteBuffer:            4 * 1024 * 1024,
+			OpenFilesCacheCapacity: 10,
+			BlockCacheCapacity:     8 * 1024 * 1024,
+			Compression:            opt.DefaultCompression,
+		}
+	case ScenarioEdge:
+		return &opt.Options{
+			WriteBuffer:            16 * 1024 * 1024,
+			OpenFilesCacheCapacity: 50,
+			BlockCacheCapacity:     32 * 1024 * 1024,
+			Compression:            opt.DefaultCompression,
+		}
+	case ScenarioGame:
+		return &opt.Options{
+			WriteBuffer:            64 * 1024 * 1024,
+			OpenFilesCacheCapacity: 200,
+			BlockCacheCapacity:     128 * 1024 * 1024,
+			Compression:            opt.NoCompression,
+		}
+	default:
+		return &opt.Options{
+			WriteBuffer:            64 * 1024 * 1024,
+			OpenFilesCacheCapacity: 200,
+			BlockCacheCapacity:     128 * 1024 * 1024,
+			Compression:            opt.DefaultCompression,
+		}
+	}
 }
 
 // Load 加载配置
@@ -74,6 +215,26 @@ func Load() (*Config, error) {
 		RetentionDays:         30,   // 默认保留30天数据
 		CleanupInterval:       24,   // 默认每24小时清理一次
 		CleanupBatchSize:      1000, // 默认每批清理1000条记录
+		// 告警通知默认值
+		EnableAlertNotifications:  false,
+		AlertNotificationChannels: []string{},
+		AlertMQTTTopic:            "edgex/alerts",
+		AlertWebhookURL:           "",
+		AlertMinSeverity:          "warning",
+		// 数据同步默认值
+		EnableDataSync:        false,
+		DataSyncMQTTTopic:     "edgex/data/sync",
+		DataSyncQueueDir:      "./data_sync_queue",
+		DataSyncBatchSize:     100,
+		DataSyncInterval:      30,
+		DataSyncMaxRetryCount: 5,
+		// 资源使用监控默认值
+		EnableResourceMonitoring: true,
+		MaxMemoryMB:              50, // 50MB 内存限制
+		MaxCPUPercent:            5,  // 5% CPU 限制
+		ResourceMonitorInterval:  10, // 每10秒检查一次
+		// 数据库场景默认值
+		DBScenario: ScenarioEdge, // 默认使用边缘场景
 	}
 
 	// 2. 尝试从EdgeX配置中心加载
@@ -90,6 +251,9 @@ func Load() (*Config, error) {
 
 	// 4. 从环境变量加载（优先级最高）
 	loadFromEnv(cfg)
+
+	// 设置到配置管理器
+	GetConfigManager().SetConfig(cfg)
 
 	return cfg, nil
 }

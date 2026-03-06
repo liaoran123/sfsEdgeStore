@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"sfsEdgeStore/agent"
+	"sfsEdgeStore/alert"
 	"sfsEdgeStore/analyzer"
 	"sfsEdgeStore/auth"
 	"sfsEdgeStore/config"
@@ -17,8 +18,10 @@ import (
 	"sfsEdgeStore/monitor"
 	"sfsEdgeStore/mqtt"
 	"sfsEdgeStore/queue"
+	"sfsEdgeStore/resource"
 	"sfsEdgeStore/retention"
 	"sfsEdgeStore/server"
+	"sfsEdgeStore/sync"
 )
 
 var appConfig *config.Config
@@ -27,6 +30,9 @@ var monitorInstance *monitor.Monitor
 var agentInstance *agent.Agent
 var analyzerInstance *analyzer.Analyzer
 var retentionManager *retention.RetentionManager
+var alertNotifier *alert.Notifier
+var syncManager *sync.SyncManager
+var resourceMonitor *resource.ResourceMonitor
 
 func main() {
 	// 加载配置
@@ -39,6 +45,13 @@ func main() {
 	// 初始化监控
 	monitorInstance = monitor.NewMonitor()
 	monitorInstance.RegisterHandlers()
+
+	// 初始化告警通知器
+	alertNotifier = alert.NewNotifier(appConfig)
+	monitorInstance.SetNotifier(alertNotifier)
+	if err := alertNotifier.Start(); err != nil {
+		log.Printf("Failed to start alert notifier: %v", err)
+	}
 
 	// 初始化分析引擎
 	analyzerInstance = analyzer.NewAnalyzer(appConfig)
@@ -111,8 +124,24 @@ func main() {
 		log.Printf("Failed to start retention manager: %v", err)
 	}
 
+	// 初始化并启动数据同步管理器
+	syncManager, err = sync.NewSyncManager(appConfig)
+	if err != nil {
+		log.Printf("Failed to initialize sync manager: %v", err)
+	} else {
+		if err := syncManager.Start(); err != nil {
+			log.Printf("Failed to start sync manager: %v", err)
+		}
+	}
+
+	// 初始化并启动资源监控器
+	resourceMonitor = resource.NewResourceMonitor(appConfig, monitorInstance)
+	if err := resourceMonitor.Start(); err != nil {
+		log.Printf("Failed to start resource monitor: %v", err)
+	}
+
 	// 启动 HTTP 服务器，提供查询接口
-	serverInstance := server.NewServer(database.Table, appConfig, monitorInstance, retentionManager)
+	serverInstance := server.NewServer(database.Table, appConfig, monitorInstance, retentionManager, alertNotifier, syncManager, resourceMonitor)
 	if err := serverInstance.Start(); err != nil {
 		log.Fatalf("Failed to start HTTP server: %v", err)
 	}
@@ -131,6 +160,21 @@ func main() {
 	// 停止数据保留策略管理器
 	if retentionManager != nil {
 		retentionManager.Stop()
+	}
+
+	// 停止告警通知器
+	if alertNotifier != nil {
+		alertNotifier.Stop()
+	}
+
+	// 停止数据同步管理器
+	if syncManager != nil {
+		syncManager.Stop()
+	}
+
+	// 停止资源监控器
+	if resourceMonitor != nil {
+		resourceMonitor.Stop()
 	}
 
 	// 给服务器 5 秒的时间来完成正在处理的请求

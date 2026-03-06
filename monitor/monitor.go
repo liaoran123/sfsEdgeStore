@@ -10,6 +10,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"sfsEdgeStore/alert"
+	"sfsEdgeStore/common"
+
 	"github.com/liaoran123/sfsDb/management/monitor"
 )
 
@@ -19,10 +22,11 @@ type Monitor struct {
 	metrics         Metrics                 // 监控指标
 	startTime       time.Time               // 启动时间
 	alertThresholds AlertThresholds         // 告警阈值
-	alerts          []Alert                 // 告警列表
+	alerts          []common.Alert          // 告警列表
 	lastMetrics     Metrics                 // 上次收集的指标
 	lastCollectTime time.Time               // 上次收集时间
 	mutex           sync.Mutex              // 保护alerts切片的互斥锁
+	notifier        *alert.Notifier         // 告警通知器
 }
 
 // Metrics 监控指标
@@ -62,15 +66,6 @@ type AlertThresholds struct {
 	DatabaseOperationsPerMinute int64 `json:"database_operations_per_minute"` // 每分钟数据库操作阈值
 }
 
-// Alert 告警信息
-type Alert struct {
-	Type      string    `json:"type"`      // 告警类型
-	Message   string    `json:"message"`   // 告警消息
-	Severity  string    `json:"severity"`  // 告警级别
-	Timestamp time.Time `json:"timestamp"` // 告警时间
-	Resolved  bool      `json:"resolved"`  // 是否已解决
-}
-
 // NewMonitor 创建监控管理器
 func NewMonitor() *Monitor {
 	return &Monitor{
@@ -87,9 +82,14 @@ func NewMonitor() *Monitor {
 			ErrorsPerMinute:             10,   // 默认每分钟10个错误
 			DatabaseOperationsPerMinute: 5000, // 默认每分钟5000个数据库操作
 		},
-		alerts:          []Alert{},
+		alerts:          []common.Alert{},
 		lastCollectTime: time.Now(),
 	}
+}
+
+// SetNotifier 设置告警通知器
+func (m *Monitor) SetNotifier(notifier *alert.Notifier) {
+	m.notifier = notifier
 }
 
 // CollectMetrics 收集监控指标
@@ -161,7 +161,7 @@ func (m *Monitor) RecordError(errorType, message string) {
 	m.IncrementErrors()
 
 	// 创建新告警
-	alert := Alert{
+	alert := common.Alert{
 		Type:      errorType,
 		Message:   message,
 		Severity:  "critical",
@@ -175,11 +175,16 @@ func (m *Monitor) RecordError(errorType, message string) {
 	m.mutex.Unlock()
 
 	log.Printf("Critical error recorded: %s - %s", errorType, message)
+
+	// 发送告警通知
+	if m.notifier != nil {
+		m.notifier.SendAlert(alert)
+	}
 }
 
 // CheckAlerts 检查告警
-func (m *Monitor) CheckAlerts() []Alert {
-	var newAlerts []Alert
+func (m *Monitor) CheckAlerts() []common.Alert {
+	var newAlerts []common.Alert
 
 	// 计算时间差（分钟）
 	timeDiff := time.Since(m.lastCollectTime).Minutes()
@@ -194,7 +199,7 @@ func (m *Monitor) CheckAlerts() []Alert {
 
 	// 检查HTTP请求告警
 	if httpRequestsPerMinute > m.alertThresholds.HTTPRequestsPerMinute {
-		newAlerts = append(newAlerts, Alert{
+		newAlerts = append(newAlerts, common.Alert{
 			Type:      "http_requests",
 			Message:   fmt.Sprintf("HTTP requests rate too high: %d per minute", httpRequestsPerMinute),
 			Severity:  "warning",
@@ -205,7 +210,7 @@ func (m *Monitor) CheckAlerts() []Alert {
 
 	// 检查错误告警
 	if errorsPerMinute > m.alertThresholds.ErrorsPerMinute {
-		newAlerts = append(newAlerts, Alert{
+		newAlerts = append(newAlerts, common.Alert{
 			Type:      "errors",
 			Message:   fmt.Sprintf("Error rate too high: %d per minute", errorsPerMinute),
 			Severity:  "critical",
@@ -216,7 +221,7 @@ func (m *Monitor) CheckAlerts() []Alert {
 
 	// 检查数据库操作告警
 	if dbOperationsPerMinute > m.alertThresholds.DatabaseOperationsPerMinute {
-		newAlerts = append(newAlerts, Alert{
+		newAlerts = append(newAlerts, common.Alert{
 			Type:      "database_operations",
 			Message:   fmt.Sprintf("Database operations rate too high: %d per minute", dbOperationsPerMinute),
 			Severity:  "warning",
@@ -233,11 +238,18 @@ func (m *Monitor) CheckAlerts() []Alert {
 	m.lastCollectTime = time.Now()
 	m.mutex.Unlock()
 
+	// 发送新告警通知
+	if m.notifier != nil {
+		for _, alert := range newAlerts {
+			m.notifier.SendAlert(alert)
+		}
+	}
+
 	return newAlerts
 }
 
 // GetAlerts 获取所有告警
-func (m *Monitor) GetAlerts() []Alert {
+func (m *Monitor) GetAlerts() []common.Alert {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	return m.alerts

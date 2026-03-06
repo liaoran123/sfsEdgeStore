@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"sfsEdgeStore/common"
+	"sfsEdgeStore/config"
 	"time"
 
 	"github.com/liaoran123/sfsDb/engine"
@@ -24,6 +25,29 @@ func Init(dbPath string, useEncryption bool, encryptionKey, algorithm string) er
 	if err := os.MkdirAll(dbPath, 0755); err != nil {
 		return fmt.Errorf("failed to create database directory: %v", err)
 	}
+
+	// 设置数据库场景配置
+	var dbScenario string
+	cfgMgr := config.GetConfigManager()
+	if cfgMgr != nil && cfgMgr.GetConfig() != nil {
+		dbScenario = cfgMgr.GetConfig().DBScenario
+		log.Printf("Using database scenario: %s", dbScenario)
+	} else {
+		dbScenario = storage.ScenarioEdge
+		log.Printf("Using default database scenario: %s", dbScenario)
+	}
+
+	// 获取场景配置选项
+	scenarioOptions := storage.GetConfigManager().GetScenarioOptions(dbScenario)
+
+	// 转换为 storage.Config 并设置
+	storageConfig := storage.Config{
+		WriteBuffer:            scenarioOptions.WriteBuffer,
+		OpenFilesCacheCapacity: scenarioOptions.OpenFilesCacheCapacity,
+		BlockCacheCapacity:     scenarioOptions.BlockCacheCapacity,
+		Compression:            scenarioOptions.Compression,
+	}
+	storage.SetConfig(storageConfig)
 
 	// 打开数据库
 	var err error

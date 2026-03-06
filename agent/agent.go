@@ -256,8 +256,19 @@ func (a *Agent) handleReboot(requestID string) {
 func (a *Agent) handleUpdateConfig(requestID string, payload json.RawMessage) {
 	log.Println("Executing update config command")
 
-	// 这里可以实现配置更新逻辑
-	// 例如，将新配置写入文件，然后通知主程序重新加载
+	var newConfig config.Config
+	if err := json.Unmarshal(payload, &newConfig); err != nil {
+		log.Printf("Failed to parse config payload: %v", err)
+		a.sendErrorResponse(requestID, "Invalid config format")
+		return
+	}
+
+	configManager := config.GetConfigManager()
+	if err := configManager.UpdateConfig(&newConfig); err != nil {
+		log.Printf("Failed to update config: %v", err)
+		a.sendErrorResponse(requestID, fmt.Sprintf("Failed to update config: %v", err))
+		return
+	}
 
 	response := Response{
 		RequestID: requestID,
