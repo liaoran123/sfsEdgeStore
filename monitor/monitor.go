@@ -19,17 +19,33 @@ import (
 // Monitor 监控管理器
 type Monitor struct {
 	monitorManager  *monitor.MonitorManager // 监控管理器
-	metrics         Metrics                 // 监控指标
+	metrics         InternalMetrics         // 内部监控指标（使用atomic）
 	startTime       time.Time               // 启动时间
 	alertThresholds AlertThresholds         // 告警阈值
 	alerts          []common.Alert          // 告警列表
-	lastMetrics     Metrics                 // 上次收集的指标
+	lastMetrics     InternalMetrics         // 上次收集的指标
 	lastCollectTime time.Time               // 上次收集时间
 	mutex           sync.Mutex              // 保护alerts切片的互斥锁
 	notifier        *alert.Notifier         // 告警通知器
 }
 
-// Metrics 监控指标
+// InternalMetrics 内部监控指标（使用atomic类型）
+type InternalMetrics struct {
+	System      SystemMetrics       `json:"system"`
+	Database    DatabaseMetrics     `json:"database"`
+	Application InternalApplicationMetrics `json:"application"`
+}
+
+// InternalApplicationMetrics 内部应用指标（使用atomic类型）
+type InternalApplicationMetrics struct {
+	MQTTMessagesReceived  atomic.Int64
+	MQTTMessagesProcessed atomic.Int64
+	HTTPRequests          atomic.Int64
+	DatabaseOperations    atomic.Int64
+	Errors                atomic.Int64
+}
+
+// Metrics 导出的监控指标（使用普通类型）
 type Metrics struct {
 	System      SystemMetrics      `json:"system"`
 	Database    DatabaseMetrics    `json:"database"`
@@ -50,13 +66,13 @@ type DatabaseMetrics struct {
 	IndexStats map[int]interface{} `json:"index_stats"` // 索引统计
 }
 
-// ApplicationMetrics 应用指标
+// ApplicationMetrics 应用指标（使用普通类型用于导出）
 type ApplicationMetrics struct {
-	MQTTMessagesReceived  atomic.Int64 `json:"mqtt_messages_received"`  // MQTT消息接收计数
-	MQTTMessagesProcessed atomic.Int64 `json:"mqtt_messages_processed"` // MQTT消息处理计数
-	HTTPRequests          atomic.Int64 `json:"http_requests"`           // HTTP请求计数
-	DatabaseOperations    atomic.Int64 `json:"database_operations"`     // 数据库操作计数
-	Errors                atomic.Int64 `json:"errors"`                  // 错误计数
+	MQTTMessagesReceived  int64 `json:"mqtt_messages_received"`  // MQTT消息接收计数
+	MQTTMessagesProcessed int64 `json:"mqtt_messages_processed"` // MQTT消息处理计数
+	HTTPRequests          int64 `json:"http_requests"`           // HTTP请求计数
+	DatabaseOperations    int64 `json:"database_operations"`     // 数据库操作计数
+	Errors                int64 `json:"errors"`                  // 错误计数
 }
 
 // AlertThresholds 告警阈值
@@ -70,11 +86,11 @@ type AlertThresholds struct {
 func NewMonitor() *Monitor {
 	return &Monitor{
 		monitorManager: monitor.NewMonitorManager(),
-		metrics: Metrics{
+		metrics: InternalMetrics{
 			System: SystemMetrics{
 				Goroutines: runtime.NumGoroutine(),
 			},
-			Application: ApplicationMetrics{},
+			Application: InternalApplicationMetrics{},
 		},
 		startTime: time.Now(),
 		alertThresholds: AlertThresholds{
@@ -84,6 +100,21 @@ func NewMonitor() *Monitor {
 		},
 		alerts:          []common.Alert{},
 		lastCollectTime: time.Now(),
+	}
+}
+
+// toExportedMetrics 将内部指标转换为导出指标
+func (m *Monitor) toExportedMetrics() Metrics {
+	return Metrics{
+		System:   m.metrics.System,
+		Database: m.metrics.Database,
+		Application: ApplicationMetrics{
+			MQTTMessagesReceived:  m.metrics.Application.MQTTMessagesReceived.Load(),
+			MQTTMessagesProcessed: m.metrics.Application.MQTTMessagesProcessed.Load(),
+			HTTPRequests:          m.metrics.Application.HTTPRequests.Load(),
+			DatabaseOperations:    m.metrics.Application.DatabaseOperations.Load(),
+			Errors:                m.metrics.Application.Errors.Load(),
+		},
 	}
 }
 
@@ -100,7 +131,7 @@ func (m *Monitor) CollectMetrics() Metrics {
 	// 收集数据库指标
 	m.collectDatabaseMetrics()
 
-	return m.metrics
+	return m.toExportedMetrics()
 }
 
 // collectSystemMetrics 收集系统指标
@@ -182,6 +213,13 @@ func (m *Monitor) RecordError(errorType, message string) {
 	}
 }
 
+// lastMetricValues 保存上次指标的数值快照
+type lastMetricValues struct {
+	httpRequests       int64
+	errors             int64
+	databaseOperations int64
+}
+
 // CheckAlerts 检查告警
 func (m *Monitor) CheckAlerts() []common.Alert {
 	var newAlerts []common.Alert
@@ -192,10 +230,20 @@ func (m *Monitor) CheckAlerts() []common.Alert {
 		timeDiff = 1 // 避免除以零
 	}
 
+	// 获取当前指标值
+	currentHTTP := m.metrics.Application.HTTPRequests.Load()
+	currentErrors := m.metrics.Application.Errors.Load()
+	currentDBOps := m.metrics.Application.DatabaseOperations.Load()
+
+	// 获取上次指标值
+	lastHTTP := m.lastMetrics.Application.HTTPRequests.Load()
+	lastErrors := m.lastMetrics.Application.Errors.Load()
+	lastDBOps := m.lastMetrics.Application.DatabaseOperations.Load()
+
 	// 计算每分钟的指标
-	httpRequestsPerMinute := (m.metrics.Application.HTTPRequests.Load() - m.lastMetrics.Application.HTTPRequests.Load()) / int64(timeDiff)
-	errorsPerMinute := (m.metrics.Application.Errors.Load() - m.lastMetrics.Application.Errors.Load()) / int64(timeDiff)
-	dbOperationsPerMinute := (m.metrics.Application.DatabaseOperations.Load() - m.lastMetrics.Application.DatabaseOperations.Load()) / int64(timeDiff)
+	httpRequestsPerMinute := (currentHTTP - lastHTTP) / int64(timeDiff)
+	errorsPerMinute := (currentErrors - lastErrors) / int64(timeDiff)
+	dbOperationsPerMinute := (currentDBOps - lastDBOps) / int64(timeDiff)
 
 	// 检查HTTP请求告警
 	if httpRequestsPerMinute > m.alertThresholds.HTTPRequestsPerMinute {
@@ -233,8 +281,14 @@ func (m *Monitor) CheckAlerts() []common.Alert {
 	// 添加新告警（加锁保护）
 	m.mutex.Lock()
 	m.alerts = append(m.alerts, newAlerts...)
-	// 更新上次收集的指标和时间
-	m.lastMetrics = m.metrics
+	
+	// 更新上次收集的指标值（逐个存储，不复制整个结构体）
+	m.lastMetrics.Application.MQTTMessagesReceived.Store(m.metrics.Application.MQTTMessagesReceived.Load())
+	m.lastMetrics.Application.MQTTMessagesProcessed.Store(m.metrics.Application.MQTTMessagesProcessed.Load())
+	m.lastMetrics.Application.HTTPRequests.Store(m.metrics.Application.HTTPRequests.Load())
+	m.lastMetrics.Application.DatabaseOperations.Store(m.metrics.Application.DatabaseOperations.Load())
+	m.lastMetrics.Application.Errors.Store(m.metrics.Application.Errors.Load())
+	
 	m.lastCollectTime = time.Now()
 	m.mutex.Unlock()
 

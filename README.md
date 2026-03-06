@@ -1,392 +1,256 @@
 # sfsEdgeStore
 
-[中文版本 (Chinese Version)](README_CN.md)
+轻量级边缘计算数据存储适配器 - EdgeX Foundry 与 sfsDb 之间的桥梁
 
-## Overview
-sfsEdgeStore provides seamless integration between EdgeX Foundry and sfsDb embedded database, enabling efficient storage and retrieval of device data at the edge. This adapter follows EdgeX Foundry best practices and standards for edge computing solutions.
+## 📋 简介
 
-## Features
-- **EdgeX Foundry Compatible**: Implements EdgeX MessageEnvelope format and MQTT message bus integration
-- **Efficient Storage**: Uses sfsDb embedded database for lightweight, high-performance data storage
-- **Real-time Processing**: Processes and stores EdgeX events in real-time
-- **Automatic Database Management**: Automatically initializes database and creates optimized indexes
-- **Configurable**: Supports configuration via environment variables and config file
-- **Health Monitoring**: Provides HTTP health check endpoint
-- **Data Backup**: Includes backup and restore functionality for data persistence
+**sfsEdgeStore** 是典型的"小前端"应用，专为边缘计算场景设计。它作为 EdgeX Foundry 和 sfsDb 数据库之间的桥梁，提供高效的本地数据读写和缓存能力。
 
-## Prerequisites
-- **EdgeX Foundry**: v3.0.0 or later
-- **MQTT Broker**: Mosquitto 2.0+ or compatible MQTT broker
-- **Go**: 1.25 or higher
-- **sfsDb**: v1.0.0 or later
-- **Operating System**: Linux, macOS, or Windows
+### 🎯 核心特征
 
-## Quick Start
+| 特性 | 说明 |
+|------|------|
+| **部署位置** | 直接部署在资源受限的边缘设备上，与 EdgeX Foundry 共同运行 |
+| **资源占用** | 轻量级设计，内存 < 50MB，CPU < 5% |
+| **核心功能** | EdgeX Foundry 和 sfsDb 之间的数据桥梁 |
+| **独立运行** | 可独立于中心系统运行，网络中断不影响本地数据采集 |
+| **本地化处理** | 数据存储在本地 sfsDb，实现边缘数据处理 |
 
-### Build from Source
+## 🏗️ 架构
+
+### "大后台 + 小前端" 模式
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        大后台                                │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
+│  │ 中央管理平台  │  │ 数据分析中心  │  │ 告警运维中心  │  │
+│  └──────────────┘  └──────────────┘  └──────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              │ 全局管理 / 数据汇总
+                              │
+┌─────────────────────────────────────────────────────────────┐
+│                        边缘节点                              │
+│  ┌───────────────────────────────────────────────────────┐ │
+│  │  sfsEdgeStore (小前端)                                │ │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────┐  │ │
+│  │  │  MQTT 客户端  │→ │  数据队列    │→ │  sfsDb   │  │ │
+│  │  └──────────────┘  └──────────────┘  └──────────┘  │ │
+│  │  ┌──────────────┐  ┌──────────────┐                  │ │
+│  │  │  HTTP 服务   │  │  监控告警    │                  │ │
+│  │  └──────────────┘  └──────────────┘                  │ │
+│  └───────────────────────────────────────────────────────┘ │
+│  ┌───────────────────────────────────────────────────────┐ │
+│  │              EdgeX Foundry                              │ │
+│  └───────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## ✨ 功能特性
+
+- 📡 **MQTT 数据接入**：订阅 EdgeX Foundry 事件主题
+- 💾 **本地数据存储**：使用 sfsDb 高效存储边缘数据
+- 📊 **实时监控**：内置系统指标和业务指标监控
+- ⚠️ **智能告警**：阈值告警和异常检测
+- 🔄 **数据队列**：断电恢复和数据重试机制
+- 📈 **数据分析**：内置时间窗口聚合和预测
+- 🔐 **认证授权**：API Key 和 RBAC 权限控制
+- 🌐 **HTTP API**：RESTful 接口供外部查询
+- 🔄 **数据同步**：可选的数据上云同步
+- 🗑️ **数据保留**：自动清理过期数据
+
+## 🚀 快速开始
+
+### 前置条件
+
+- Go 1.25+
+- EdgeX Foundry (可选，用于数据源)
+- MQTT Broker (如 Mosquitto)
+
+### 安装
+
 ```bash
+# 克隆仓库
 git clone https://github.com/your-org/sfsEdgeStore.git
 cd sfsEdgeStore
-go build
+
+# 安装依赖
+go mod download
+
+# 编译
+go build -o sfsedgestore
 ```
 
-### Run the Adapter
+### 配置
+
+复制配置示例文件：
+
 ```bash
-./sfsEdgeStore
+cp config.example.json config.json
 ```
 
-### Default Configuration
-By default, the adapter will:
-- Connect to MQTT broker at `tcp://localhost:1883`
-- Subscribe to topic `edgex/events/core/#`
-- Store data in `./edgex_data` directory
-- Create table `edgex_readings` with optimized indexes
-- Start HTTP health check server on port 8080
-
-## Configuration
-
-### EdgeX Configuration Standards
-The adapter follows EdgeX Foundry configuration standards, supporting multiple configuration sources:
-
-1. **Environment Variables** (highest priority)
-2. **Configuration File** (`config.json`)
-3. **Default Values** (lowest priority)
-
-### Environment Variables
-- `EDGEX_DB_PATH` - Database storage path
-- `EDGEX_MQTT_BROKER` - MQTT broker address
-- `EDGEX_MQTT_TOPIC` - MQTT topic to subscribe to
-- `EDGEX_CLIENT_ID` - MQTT client ID
-
-### Configuration File Example
-```json
-{
-  "db_path": "./edgex_data",
-  "mqtt_broker": "tcp://localhost:1883",
-  "mqtt_topic": "edgex/events/core/#",
-  "client_id": "sfsdb-edgex-adapter"
-}
-```
-
-## EdgeX Integration
-
-### Message Format
-The adapter processes EdgeX messages in the standard **MessageEnvelope** format as defined by EdgeX Foundry:
+编辑 `config.json`：
 
 ```json
 {
-  "correlationId": "5e8a3c9d-1b2c-4d5e-8f9a-1b2c3d4e5f6g",
-  "messageType": "event",
-  "origin": 1677721600000000000,
-  "payload": {
-    "id": "event-123",
-    "deviceName": "Thermostat-001",
-    "readings": [
-      {
-        "id": "reading-123",
-        "resourceName": "temperature",
-        "value": "25.5",
-        "origin": 1677721600000000000,
-        "profileName": "ThermostatProfile",
-        "deviceName": "Thermostat-001",
-        "metadata": {"unit": "Celsius"}
-      }
-    ],
-    "origin": 1677721600000000000,
-    "profileName": "ThermostatProfile",
-    "sourceName": "ThermostatSource"
-  }
+  "MQTTBroker": "tcp://localhost:1883",
+  "MQTTClientID": "sfsedgestore",
+  "MQTTTopic": "edgex/events/core/#",
+  "DBPath": "./data",
+  "DBUseEncryption": false,
+  "HTTPPort": 8080
 }
 ```
 
-### Data Storage
-Data is stored in the `edgex_readings` table with the following schema, optimized for EdgeX data patterns:
+### 运行
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | String | Unique reading ID |
-| `deviceName` | String | Device name (part of composite primary key) |
-| `reading` | String | Resource name (e.g., temperature, humidity) |
-| `value` | Float | Reading value |
-| `timestamp` | Integer | Timestamp in seconds (part of composite primary key) |
-| `metadata` | String | JSON metadata |
-
-### Indexes
-- **Composite Primary Key**: `(deviceName, timestamp)` for efficient time-range queries
-- **Time Index**: For time-based filtering
-
-### Query Optimization
-The adapter implements efficient query functionality through the `queryReadings` function, which:
-- Supports filtering by device name and time range
-- Utilizes the composite primary key for optimized range queries
-- Parses RFC3339 format timestamps for time-based filtering
-- Returns structured results in a consistent format
-
-**Query Parameters**:
-- `deviceName`: Optional device name filter
-- `startTime`: Optional start time (RFC3339 format)
-- `endTime`: Optional end time (RFC3339 format)
-
-**Example Query**:
 ```bash
-# Query all readings for a specific device
-GET /api/readings?deviceName=Thermostat-001
+# 直接运行
+./sfsedgestore
 
-# Query readings for a device within a time range
-GET /api/readings?deviceName=Thermostat-001&startTime=2024-01-01T00:00:00Z&endTime=2024-01-02T00:00:00Z
+# 或使用 Go 运行
+go run main.go
 ```
 
-## API
+## 📡 API 接口
 
-### Health Check Endpoint
-- **URL**: `/health`
-- **Method**: GET
-- **Response**: JSON status of the adapter
+### 健康检查
 
-Example response:
-```json
-{
-  "status": "healthy",
-  "components": {
-    "database": "connected",
-    "mqtt": "connected",
-    "adapter": "running"
-  }
-}
-```
-
-### Readings Query Endpoint
-- **URL**: `/api/readings`
-- **Method**: GET
-- **Parameters**:
-  - `deviceName` (optional): Filter by device name
-  - `startTime` (optional): Start time in RFC3339 format
-  - `endTime` (optional): End time in RFC3339 format
-- **Response**: JSON array of readings
-
-Example response:
-```json
-[
-  {
-    "id": "reading-123",
-    "deviceName": "Thermostat-001",
-    "reading": "temperature",
-    "value": 25.5,
-    "timestamp": 1677721600,
-    "metadata": "{\"unit\": \"Celsius\"}"
-  }
-]
-```
-
-### Backup API Endpoint
-- **URL**: `/api/backup`
-- **Method**: POST
-- **Parameters**:
-  - `path` (optional): Backup storage path (default: `./backups`)
-- **Response**: JSON object with backup status and file path
-
-Example request:
 ```bash
-# Create backup with default path
-POST /api/backup
-
-# Create backup with custom path
-POST /api/backup?path=/path/to/backups
+curl http://localhost:8080/health
 ```
 
-Example response:
-```json
-{
-  "status": "success",
-  "backupFile": "./backups/backup_20240101_120000"
-}
-```
+### 获取指标
 
-### Restore API Endpoint
-- **URL**: `/api/restore`
-- **Method**: POST
-- **Parameters**:
-  - `file` (required): Backup file path
-- **Response**: JSON object with restore status
-
-Example request:
 ```bash
-# Restore from backup file
-POST /api/restore?file=./backups/backup_20240101_120000
+curl http://localhost:8080/metrics
 ```
 
-Example response:
-```json
-{
-  "status": "success",
-  "message": "Database restored successfully"
-}
-```
+### 查询数据
 
-## Monitoring
-
-### Logging
-The adapter follows EdgeX Foundry logging standards, providing structured logs for:
-- Configuration loading
-- Database initialization and operations
-- MQTT connection status
-- Message processing
-- Error conditions and warnings
-
-### Metrics
-The adapter exposes the following metrics for monitoring:
-- Message processing rate
-- Database operation latency
-- MQTT connection status
-- Storage utilization
-
-## Backup and Restore
-
-### Backup
-To create a backup of the database:
 ```bash
-# Backup functionality is integrated into the adapter
-# See backup package for details
+# 查询设备数据
+curl "http://localhost:8080/query?deviceName=Device001"
+
+# 按时间范围查询
+curl "http://localhost:8080/query?deviceName=Device001&startTime=2024-01-01T00:00:00Z&endTime=2024-12-31T23:59:59Z"
 ```
 
-### Restore
-To restore from a backup:
+### 查看告警
+
 ```bash
-# Restore functionality is integrated into the adapter
-# See backup package for details
+curl http://localhost:8080/alerts
 ```
 
-## Troubleshooting
+## 📦 部署
 
-### Common Issues
+### 二进制部署
 
-1. **MQTT Connection Failed**
-   - Ensure MQTT broker is running
-   - Verify broker address and port configuration
-   - Check network connectivity
+1. 从 [GitHub Releases](https://github.com/your-org/sfsEdgeStore/releases) 下载对应平台的二进制文件
+2. 配置 `config.json`
+3. 运行二进制文件
 
-2. **Database Initialization Failed**
-   - Ensure database directory is writable
-   - Check file system permissions
-   - Verify sufficient disk space
+### Docker 部署
 
-3. **Message Processing Errors**
-   - Verify message format matches EdgeX MessageEnvelope standard
-   - Check log output for detailed error messages
-   - Ensure EdgeX Foundry version compatibility
-
-4. **Performance Issues**
-   - Consider increasing MQTT message queue size
-   - Verify database directory is on fast storage
-   - Monitor system resources (CPU, memory, disk I/O)
-
-## Version Compatibility
-
-| Component | Version |
-|-----------|---------|
-| EdgeX Foundry | v3.0.0+ |
-| Go | 1.25+ |
-| sfsDb | v1.0.0+ |
-| MQTT Broker | Mosquitto 2.0+ |
-
-## Security
-
-### Best Practices
-- Use secure MQTT connections (TLS)
-- Implement proper access controls for the database
-- Regularly update dependencies
-- Follow EdgeX Foundry security guidelines
-
-## Deployment
-
-### Containerization
-The adapter can be containerized using Docker:
-
-```dockerfile
-FROM golang:1.25-alpine AS builder
-WORKDIR /app
-COPY . .
-RUN go build -o sfsdb-edgex-adapter
-
-FROM alpine:latest
-WORKDIR /app
-COPY --from=builder /app/sfsdb-edgex-adapter .
-COPY config.json .
-EXPOSE 8080
-CMD ["./sfsdb-edgex-adapter"]
-```
-
-### EdgeX Foundry Deployment
-The adapter can be deployed as part of an EdgeX Foundry instance using Docker Compose:
-
-```yaml
-version: '3.8'
-services:
-  sfsdb-edgex-adapter:
-    image: sfsdb-edgex-adapter:latest
-    depends_on:
-      - mqtt-broker
-    environment:
-      - EDGEX_MQTT_BROKER=tcp://mqtt-broker:1883
-    volumes:
-      - ./edgex_data:/app/edgex_data
-    ports:
-      - "8080:8080"
-```
-
-## Testing
-
-### Unit Tests
 ```bash
+docker pull your-org/sfsdb-edgex-adapter:latest
+docker run -d \
+  -p 8080:8080 \
+  -v ./data:/app/data \
+  -v ./config.json:/app/config.json \
+  your-org/sfsdb-edgex-adapter:latest
+```
+
+### Systemd 服务
+
+创建 `/etc/systemd/system/sfsedgestore.service`：
+
+```ini
+[Unit]
+Description=sfsEdgeStore Edge Data Adapter
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/sfsedgestore
+ExecStart=/opt/sfsedgestore/sfsedgestore
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+启动服务：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable sfsedgestore
+sudo systemctl start sfsedgestore
+```
+
+## 🔧 开发
+
+### 运行测试
+
+```bash
+# 运行所有测试
 go test -v ./...
+
+# 运行带竞争检测
+go test -v -race ./...
+
+# 只运行数据库测试
+go test -v ./database/...
 ```
 
-### Integration Tests
-```bash
-go test -v -run TestIntegration
+### 项目结构
+
+```
+sfsEdgeStore/
+├── main.go                 # 主程序入口
+├── config/                 # 配置管理
+├── database/               # 数据库操作
+├── mqtt/                   # MQTT 客户端
+├── server/                 # HTTP 服务器
+├── monitor/                # 监控指标
+├── alert/                  # 告警管理
+├── queue/                  # 数据队列
+├── auth/                   # 认证授权
+├── agent/                  # 管理 Agent
+├── analyzer/               # 数据分析
+├── sync/                   # 数据同步
+├── retention/              # 数据保留
+├── resource/               # 资源监控
+└── word/                   # 文档
 ```
 
-### EdgeX Compatibility Tests
-The adapter has been tested with EdgeX Foundry v3.0.0+ to ensure compatibility with the EdgeX message format and integration patterns.
+## 📊 性能指标
 
-## Contributing
+| 指标 | 目标值 |
+|------|--------|
+| 内存占用 | < 50 MB |
+| CPU 使用率 | < 5% |
+| 启动时间 | < 2 秒 |
+| 数据写入延迟 | < 10 ms |
+| 支持并发 | 1000+ QPS |
 
-### EdgeX Contribution Guidelines
-This project follows EdgeX Foundry contribution guidelines. Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to contribute.
+## 🤝 贡献
 
-### Code Style
-- Follow Go code style standards
-- Use EdgeX Foundry recommended patterns
-- Include comprehensive test coverage
-- Document all public APIs
+欢迎提交 Issue 和 Pull Request！
 
-## License
+## 📄 许可证
 
-This project is licensed under the [Apache 2.0 License](LICENSE), consistent with EdgeX Foundry licensing requirements.
+MIT License
 
-## Support
+## 🙏 致谢
 
-### Community Support
-- EdgeX Foundry community forums
-- GitHub issues for bug reports and feature requests
+- [EdgeX Foundry](https://www.edgexfoundry.org/)
+- [sfsDb](https://github.com/liaoran123/sfsDb)
+- [Eclipse Paho MQTT](https://www.eclipse.org/paho/)
 
-### Commercial Support
+---
 
-We offer commercial support and enterprise solutions for sfsdb-edgex-adapter:
-
-- **Enterprise Edition**: Advanced features including enhanced data compression, security integration, and monitoring capabilities
-- **Consulting Services**: EdgeX integration consulting and architecture design
-- **Custom Development**: Tailored solutions for specific industries
-- **Technical Training**: EdgeX and sfsDb related training
-- **Priority Support**: Dedicated technical support with guaranteed response times
-
-For more information about commercial offerings, please contact us at [sfsweb@qq.com](mailto:sfsweb@qq.com).
-
-## Roadmap
-
-### Future Enhancements
-- Support for EdgeX Foundry v4.0.0
-- Advanced data compression and retention policies
-- Integration with EdgeX security services
-- Enhanced monitoring and analytics capabilities
-- Support for additional database backends
+**sfsEdgeStore** - 让边缘数据存储更简单！🚀
