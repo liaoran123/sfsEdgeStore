@@ -99,6 +99,11 @@ func DeviceNameMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 // registerRoutes 注册HTTP路由
 func (s *Server) registerRoutes() {
+	// 健康检查端点 - 不需要认证，用于负载均衡器等
+	http.HandleFunc("/health", s.handleHealth)
+	http.HandleFunc("/healthz", s.handleHealth)
+	http.HandleFunc("/ready", s.handleReady)
+
 	// 数据查询API - 使用中间件处理deviceName格式化和认证
 	http.HandleFunc("/api/readings", auth.AuthMiddleware(DeviceNameMiddleware(s.handleQueryReadings)))
 
@@ -1198,4 +1203,49 @@ func (s *Server) handleResourceStatus(w http.ResponseWriter, r *http.Request) {
 		"status": "success",
 		"data":   usage,
 	})
+}
+
+// handleHealth 处理健康检查请求
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	healthStatus := map[string]interface{}{
+		"status":    "healthy",
+		"timestamp": time.Now().Format(time.RFC3339),
+		"version":   "1.0.0",
+	}
+
+	json.NewEncoder(w).Encode(healthStatus)
+}
+
+// handleReady 处理就绪检查请求
+func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	isReady := true
+	checks := map[string]bool{
+		"database": s.Table != nil,
+		"mqtt":     true, // MQTT 连接状态后续可以增强
+	}
+
+	for _, ready := range checks {
+		if !ready {
+			isReady = false
+			break
+		}
+	}
+
+	statusCode := http.StatusOK
+	if !isReady {
+		statusCode = http.StatusServiceUnavailable
+	}
+
+	readyStatus := map[string]interface{}{
+		"status":    "ready",
+		"timestamp": time.Now().Format(time.RFC3339),
+		"checks":    checks,
+	}
+
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(readyStatus)
 }

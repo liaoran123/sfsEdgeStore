@@ -1,44 +1,28 @@
-# 使用官方Go镜像作为构建环境
-FROM golang:1.25-alpine AS builder
+FROM golang:1.25.3-alpine AS builder
 
-# 设置工作目录
 WORKDIR /app
 
-# 复制go.mod和go.sum文件
-COPY go.mod go.sum ./
+RUN apk add --no-cache git ca-certificates tzdata
 
-# 下载依赖
+COPY go.mod go.sum ./
 RUN go mod download
 
-# 复制源代码
 COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o sfsEdgeStore .
 
-# 构建应用
-RUN go build -o sfsdb-edgex-adapter .
-
-# 使用Alpine作为基础镜像
 FROM alpine:latest
 
-# 安装必要的依赖
-RUN apk add --no-cache ca-certificates
+RUN apk --no-cache add ca-certificates tzdata
 
-# 设置工作目录
 WORKDIR /app
 
-# 从构建阶段复制可执行文件
-COPY --from=builder /app/sfsdb-edgex-adapter /app/
+COPY --from=builder /app/sfsEdgeStore .
+COPY --from=builder /app/config.example.json config.json
 
-# 创建数据目录
-RUN mkdir -p /app/edgex_data
-
-# 暴露健康检查端口
 EXPOSE 8081
 
-# 设置环境变量
-ENV EDGEX_DB_PATH=/app/edgex_data
-ENV EDGEX_MQTT_BROKER=tcp://localhost:1883
-ENV EDGEX_MQTT_TOPIC=edgex/events/core/#
-ENV EDGEX_CLIENT_ID=sfsdb-edgex-adapter
+VOLUME ["/app/edgex_data", "/app/data_sync_queue", "/app/backups"]
 
-# 运行应用
-CMD ["./sfsdb-edgex-adapter"]
+ENV TZ=UTC
+
+CMD ["./sfsEdgeStore"]

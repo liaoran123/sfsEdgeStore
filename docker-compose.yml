@@ -1,34 +1,55 @@
 version: '3.8'
 
 services:
-  # MQTT Broker
+  sfsedgestore:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sfsedgestore
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    volumes:
+      - edgex_data:/app/edgex_data
+      - data_sync_queue:/app/data_sync_queue
+      - backups:/app/backups
+      - ./config.json:/app/config.json:ro
+    environment:
+      - TZ=Asia/Shanghai
+      - LOG_LEVEL=info
+    depends_on:
+      - mosquitto
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - sfsedgestore-network
+
   mosquitto:
-    image: eclipse-mosquitto:latest
+    image: eclipse-mosquitto:2.0
+    container_name: sfsedgestore-mqtt
+    restart: unless-stopped
     ports:
       - "1883:1883"
       - "9001:9001"
     volumes:
+      - mosquitto_config:/mosquitto/config
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
-    restart: unless-stopped
+    networks:
+      - sfsedgestore-network
 
-  # sfsDb EdgeX Adapter
-  sfsdb-edgex-adapter:
-    build: .
-    ports:
-      - "8081:8081"
-    depends_on:
-      - mosquitto
-    environment:
-      - EDGEX_MQTT_BROKER=tcp://mosquitto:1883
-      - EDGEX_MQTT_TOPIC=edgex/events/core/#
-      - EDGEX_CLIENT_ID=sfsdb-edgex-adapter
-      - EDGEX_DB_PATH=/app/edgex_data
-    volumes:
-      - adapter_data:/app/edgex_data
-    restart: unless-stopped
+networks:
+  sfsedgestore-network:
+    driver: bridge
 
 volumes:
+  edgex_data:
+  data_sync_queue:
+  backups:
+  mosquitto_config:
   mosquitto_data:
   mosquitto_log:
-  adapter_data:

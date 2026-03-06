@@ -1,0 +1,38 @@
+[Unit]
+Description=sfsEdgeStore - EdgeX 边缘存储适配器
+Documentation=https://github.com/your-org/sfsEdgeStore
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=edgex
+Group=edgex
+WorkingDirectory=/opt/sfsEdgeStore
+
+ExecStart=/opt/sfsEdgeStore/sfsEdgeStore
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+StartLimitInterval=0
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sfsedgestore
+
+# 安全设置
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/sfsEdgeStore/edgex_data
+ReadWritePaths=/opt/sfsEdgeStore/data_sync_queue
+ReadWritePaths=/opt/sfsEdgeStore/backups
+
+# 资源限制
+MemoryMax=256M
+CPUQuota=50%
+TasksMax=512
+
+[Install]
+WantedBy=multi-user.target

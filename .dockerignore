@@ -1,0 +1,42 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+docs/
+word/
+
+# Development
+*.go1
+*.old
+*.bat
+*.ps1
+.DS_Store
+Thumbs.db
+
+# Test data
+edgex_data/
+data_sync_queue/
+backups/
+testdata/
+
+# Build artifacts
+sfsEdgeStore
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+*.log

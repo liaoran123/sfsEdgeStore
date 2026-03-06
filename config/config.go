@@ -73,6 +73,9 @@ type Config struct {
 	ResourceMonitorInterval  int     `json:"resource_monitor_interval_seconds" env:"EDGEX_RESOURCE_MONITOR_INTERVAL_SECONDS"`
 	// 数据库场景配置
 	DBScenario string `json:"db_scenario" env:"EDGEX_DB_SCENARIO"`
+	// Prometheus 指标配置（可选，默认关闭）
+	EnablePrometheus bool   `json:"enable_prometheus" env:"EDGEX_ENABLE_PROMETHEUS"`
+	PrometheusPath   string `json:"prometheus_path" env:"EDGEX_PROMETHEUS_PATH"`
 }
 
 // ThresholdConfig 阈值配置
@@ -235,6 +238,9 @@ func Load() (*Config, error) {
 		ResourceMonitorInterval:  10, // 每10秒检查一次
 		// 数据库场景默认值
 		DBScenario: ScenarioEdge, // 默认使用边缘场景
+		// Prometheus 指标默认值（默认关闭，避免性能影响）
+		EnablePrometheus: false,
+		PrometheusPath:   "/metrics",
 	}
 
 	// 2. 尝试从EdgeX配置中心加载
