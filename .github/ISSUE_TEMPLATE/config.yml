@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 文档中心
+    url: ../../docs/README.md
+    about: 查看完整的使用文档
+  - name: FAQ
+    url: ../../docs/user-guide/FAQ.md
+    about: 查看常见问题解答
+  - name: 商业服务
+    url: ../../docs/pricing/SERVICES.md
+    about: 获取专业的技术支持和咨询服务

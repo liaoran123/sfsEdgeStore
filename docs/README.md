@@ -23,6 +23,7 @@
 
 ### 💰 定价与许可 (pricing/)
 - [PRICING.md](./pricing/PRICING.md) - 定价方案和套餐说明
+- [SALES_PLAN.md](./pricing/SALES_PLAN.md) - 2026 年度销售计划
 
 ### 🛟 支持与服务 (support/)
 - [SUPPORT.md](./support/SUPPORT.md) - 技术支持政策
