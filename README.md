@@ -1,6 +1,209 @@
 # sfsEdgeStore
 
-轻量级边缘计算数据存储适配器 - EdgeX Foundry 与 sfsDb 之间的桥梁
+轻量级边缘计算数据存储适配器 - 解决边缘场景的数据存储痛点
+
+---
+
+## ⚡ 性能亮点
+
+| 指标 | 实测值 | 说明 |
+|------|--------|------|
+| **内存占用** | 20.85 MB | 极轻量，适合资源受限设备 |
+| **CPU 使用率** | 2.9% | 后台运行几乎不占用资源 |
+| **启动时间** | 0.187 秒 | 极速启动，毫秒级响应 |
+| **数据库大小** | 0.25 MB | 18,681 条记录仅占 0.25 MB |
+
+---
+
+## 🎯 解决的核心问题
+
+### 边缘计算场景的痛点
+
+| 痛点 | sfsEdgeStore 的解决方案 |
+|------|---------------------|
+| **边缘设备资源有限** | 内存 < 50MB，CPU < 5%，极轻量设计 |
+| **网络中断时数据丢失** | 本地存储，断网不影响数据采集 |
+| **重型数据库部署复杂** | 5 分钟部署，开箱即用 |
+| **EdgeX Foundry 数据存储难** | 原生集成 EdgeX Foundry，无缝对接 |
+| **数据查询响应慢** | LevelDB 底层，本地查询毫秒级响应 |
+| **需要云端依赖** | 可独立运行，不依赖中心系统 |
+
+---
+
+## 📋 产品简介
+
+**sfsEdgeStore** 是专为工业物联网边缘场景设计的轻量级数据存储适配器，作为 EdgeX Foundry 和 sfsDb 数据库之间的桥梁，提供高效的本地数据读写和缓存能力。
+
+### 核心价值
+
+- ✅ **极轻量**：资源占用极低，可在任何边缘设备上运行
+- ✅ **高可靠**：本地存储，网络中断不影响数据采集
+- ✅ **易集成**：与 EdgeX Foundry 原生集成，开箱即用
+- ✅ **高性能**：LevelDB 底层，本地查询毫秒级响应
+- ✅ **开源免费**：社区版 100% 开源，无功能限制
+
+---
+
+## ✨ 核心功能
+
+- 📡 **MQTT 数据接入**：订阅 EdgeX Foundry 事件主题
+- 💾 **本地数据存储**：使用 sfsDb/LevelDB 高效存储边缘数据
+- 🔄 **数据队列**：断电恢复和数据重试机制，保证数据不丢失
+- 📊 **实时监控**：内置系统指标和业务指标监控
+- ⚠️ **智能告警**：阈值告警和异常检测
+- 📈 **数据分析**：内置时间窗口聚合和预测
+- 🔐 **认证授权**：API Key 和 RBAC 权限控制
+- 🌐 **HTTP API**：RESTful 接口供外部查询
+- 🔄 **数据同步**：可选的数据上云同步
+- 🗑️ **数据保留**：自动清理过期数据
+
+---
+
+## 🚀 5 分钟快速开始
+
+### 前置条件
+
+- Go 1.25+（如需从源码编译）
+- EdgeX Foundry（可选，用于数据源）
+- MQTT Broker（如 Mosquitto）
+
+### 方式 1：二进制部署（推荐，高性能）
+
+追求极致性能？直接运行二进制文件，零虚拟化开销！
+
+```bash
+# 从 GitHub Releases 下载对应平台的二进制文件
+# https://github.com/your-username/sfsEdgeStore/releases
+
+# 直接运行
+./sfsedgestore
+```
+
+### 方式 2：Docker 部署（方便，快速体验）
+
+Docker 适合快速测试和部署，会有轻微的性能开销（约 5-10%）。
+
+```bash
+# 拉取镜像
+docker pull sfsedgestore/sfsedgestore:latest
+
+# 运行
+docker run -d \
+  -p 8080:8080 \
+  -v ./data:/app/data \
+  -v ./config.json:/app/config.json \
+  sfsedgestore/sfsedgestore:latest
+```
+
+### 方式 3：从源码编译
+
+```bash
+# 克隆仓库
+git clone https://github.com/your-username/sfsEdgeStore.git
+cd sfsEdgeStore
+
+# 安装依赖
+go mod download
+
+# 编译
+go build -o sfsedgestore
+
+# 运行
+./sfsedgestore
+```
+
+### 验证安装
+
+```bash
+# 健康检查
+curl http://localhost:8080/health
+
+# 查看指标
+curl http://localhost:8080/metrics
+```
+
+---
+
+## 🏗️ 架构设计
+
+### 轻量级边缘架构
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      边缘节点（资源受限）                    │
+│                                                             │
+│  ┌───────────────────────────────────────────────────────┐ │
+│  │              EdgeX Foundry                              │ │
+│  │  (数据采集、设备管理)                                  │ │
+│  └────────────────────┬──────────────────────────────────┘ │
+│                       │ MQTT                              │
+│                       ▼                                   │
+│  ┌───────────────────────────────────────────────────────┐ │
+│  │         sfsEdgeStore (轻量级适配器)                    │ │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────┐  │ │
+│  │  │  MQTT 客户端  │→ │  数据队列    │→ │  sfsDb   │  │ │
+│  │  └──────────────┘  └──────────────┘  └──────────┘  │ │
+│  │  ┌──────────────┐  ┌──────────────┐                  │ │
+│  │  │  HTTP 服务   │  │  监控告警    │                  │ │
+│  │  └──────────────┘  └──────────────┘                  │ │
+│  └───────────────────────────────────────────────────────┘ │
+│                       │ HTTP API                         │
+└───────────────────────┼─────────────────────────────────────┘
+                        ▼
+                  外部查询/监控
+```
+
+### 设计原则
+
+- **小而美**：只做一件事，做到极致
+- **边缘优先**：所有功能优先考虑边缘场景
+- **零依赖**：除了 sfsDb，不依赖其他重型组件
+- **高可用**：断电恢复、数据重试、本地存储
+
+---
+
+## 📡 API 接口
+
+### 健康检查
+
+```bash
+GET /health
+```
+
+响应：
+```json
+{
+  "status": "healthy",
+  "version": "1.0.0",
+  "uptime": "1h23m45s"
+}
+```
+
+### 获取指标
+
+```bash
+GET /metrics
+```
+
+### 查询数据
+
+```bash
+# 查询设备数据
+GET /query?deviceName=Device001
+
+# 按时间范围查询
+GET /query?deviceName=Device001&startTime=2024-01-01T00:00:00Z&endTime=2024-12-31T23:59:59Z
+```
+
+### 查看告警
+
+```bash
+GET /alerts
+```
+
+完整 API 文档请查看 [API 文档](./docs/api.md)
+
+---
 
 ## 🆓 软件免费，服务收费
 
@@ -11,253 +214,7 @@
 
 我们相信好的软件应该免费，而专业的服务才是价值所在！
 
-## 📚 文档中心
-
-完整的文档请查看 [文档中心](./docs/README.md)，包含：
-
-- 📖 **使用指南** - 用户手册、管理员指南
-- 🔧 **技术文档** - API 参考、架构设计
-- 🚀 **最佳实践** - 部署、监控、安全
-- 💼 **商业服务** - 技术支持、实施咨询、定制开发
-- ... 以及更多！
-
-## 📋 简介
-
-**sfsEdgeStore** 是典型的"小前端"应用，专为边缘计算场景设计。它作为 EdgeX Foundry 和 sfsDb 数据库之间的桥梁，提供高效的本地数据读写和缓存能力。
-
-### 🎯 核心特征
-
-| 特性 | 说明 |
-|------|------|
-| **部署位置** | 直接部署在资源受限的边缘设备上，与 EdgeX Foundry 共同运行 |
-| **资源占用** | 轻量级设计，内存 < 50MB，CPU < 5% |
-| **核心功能** | EdgeX Foundry 和 sfsDb 之间的数据桥梁 |
-| **独立运行** | 可独立于中心系统运行，网络中断不影响本地数据采集 |
-| **本地化处理** | 数据存储在本地 sfsDb，实现边缘数据处理 |
-
-## 🏗️ 架构
-
-### "大后台 + 小前端" 模式
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        大后台                                │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │ 中央管理平台  │  │ 数据分析中心  │  │ 告警运维中心  │  │
-│  └──────────────┘  └──────────────┘  └──────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              │ 全局管理 / 数据汇总
-                              │
-┌─────────────────────────────────────────────────────────────┐
-│                        边缘节点                              │
-│  ┌───────────────────────────────────────────────────────┐ │
-│  │  sfsEdgeStore (小前端)                                │ │
-│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────┐  │ │
-│  │  │  MQTT 客户端  │→ │  数据队列    │→ │  sfsDb   │  │ │
-│  │  └──────────────┘  └──────────────┘  └──────────┘  │ │
-│  │  ┌──────────────┐  ┌──────────────┐                  │ │
-│  │  │  HTTP 服务   │  │  监控告警    │                  │ │
-│  │  └──────────────┘  └──────────────┘                  │ │
-│  └───────────────────────────────────────────────────────┘ │
-│  ┌───────────────────────────────────────────────────────┐ │
-│  │              EdgeX Foundry                              │ │
-│  └───────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## ✨ 功能特性
-
-- 📡 **MQTT 数据接入**：订阅 EdgeX Foundry 事件主题
-- 💾 **本地数据存储**：使用 sfsDb 高效存储边缘数据
-- 📊 **实时监控**：内置系统指标和业务指标监控
-- ⚠️ **智能告警**：阈值告警和异常检测
-- 🔄 **数据队列**：断电恢复和数据重试机制
-- 📈 **数据分析**：内置时间窗口聚合和预测
-- 🔐 **认证授权**：API Key 和 RBAC 权限控制
-- 🌐 **HTTP API**：RESTful 接口供外部查询
-- 🔄 **数据同步**：可选的数据上云同步
-- 🗑️ **数据保留**：自动清理过期数据
-
-## 🚀 快速开始
-
-### 前置条件
-
-- Go 1.25+
-- EdgeX Foundry (可选，用于数据源)
-- MQTT Broker (如 Mosquitto)
-
-### 安装
-
-```bash
-# 克隆仓库
-git clone https://github.com/your-org/sfsEdgeStore.git
-cd sfsEdgeStore
-
-# 安装依赖
-go mod download
-
-# 编译
-go build -o sfsedgestore
-```
-
-### 配置
-
-复制配置示例文件：
-
-```bash
-cp config.example.json config.json
-```
-
-编辑 `config.json`：
-
-```json
-{
-  "MQTTBroker": "tcp://localhost:1883",
-  "MQTTClientID": "sfsedgestore",
-  "MQTTTopic": "edgex/events/core/#",
-  "DBPath": "./data",
-  "DBUseEncryption": false,
-  "HTTPPort": 8080
-}
-```
-
-### 运行
-
-```bash
-# 直接运行
-./sfsedgestore
-
-# 或使用 Go 运行
-go run main.go
-```
-
-## 📡 API 接口
-
-### 健康检查
-
-```bash
-curl http://localhost:8080/health
-```
-
-### 获取指标
-
-```bash
-curl http://localhost:8080/metrics
-```
-
-### 查询数据
-
-```bash
-# 查询设备数据
-curl "http://localhost:8080/query?deviceName=Device001"
-
-# 按时间范围查询
-curl "http://localhost:8080/query?deviceName=Device001&startTime=2024-01-01T00:00:00Z&endTime=2024-12-31T23:59:59Z"
-```
-
-### 查看告警
-
-```bash
-curl http://localhost:8080/alerts
-```
-
-## 📦 部署
-
-### 二进制部署
-
-1. 从 [GitHub Releases](https://github.com/your-org/sfsEdgeStore/releases) 下载对应平台的二进制文件
-2. 配置 `config.json`
-3. 运行二进制文件
-
-### Docker 部署
-
-```bash
-docker pull your-org/sfsdb-edgex-adapter:latest
-docker run -d \
-  -p 8080:8080 \
-  -v ./data:/app/data \
-  -v ./config.json:/app/config.json \
-  your-org/sfsdb-edgex-adapter:latest
-```
-
-### Systemd 服务
-
-创建 `/etc/systemd/system/sfsedgestore.service`：
-
-```ini
-[Unit]
-Description=sfsEdgeStore Edge Data Adapter
-After=network.target
-
-[Service]
-Type=simple
-User=www-data
-WorkingDirectory=/opt/sfsedgestore
-ExecStart=/opt/sfsedgestore/sfsedgestore
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-```
-
-启动服务：
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable sfsedgestore
-sudo systemctl start sfsedgestore
-```
-
-## 🔧 开发
-
-### 运行测试
-
-```bash
-# 运行所有测试
-go test -v ./...
-
-# 运行带竞争检测
-go test -v -race ./...
-
-# 只运行数据库测试
-go test -v ./database/...
-```
-
-### 项目结构
-
-```
-sfsEdgeStore/
-├── main.go                 # 主程序入口
-├── config/                 # 配置管理
-├── database/               # 数据库操作
-├── mqtt/                   # MQTT 客户端
-├── server/                 # HTTP 服务器
-├── monitor/                # 监控指标
-├── alert/                  # 告警管理
-├── queue/                  # 数据队列
-├── auth/                   # 认证授权
-├── agent/                  # 管理 Agent
-├── analyzer/               # 数据分析
-├── sync/                   # 数据同步
-├── retention/              # 数据保留
-├── resource/               # 资源监控
-└── word/                   # 文档
-```
-
-## 📊 性能指标
-
-| 指标 | 实际值 | 状态 |
-|------|--------|------|
-| 内存占用 | 20.85 MB | ✅ 优秀 |
-| CPU 使用率 | 2.9% | ✅ 良好 |
-| 启动时间 | 0.187 秒（平均） | ✅ 极快 |
-| 数据库大小 | 0.25 MB（18,681 条记录） | ✅ 高效 |
-
-**详细性能报告**: [PERFORMANCE_REPORT.md](./PERFORMANCE_REPORT.md)
-
-## 💼 商业服务
+### 商业服务
 
 虽然 sfsEdgeStore 社区版完全免费，但我们提供专业的商业服务来帮助您成功：
 
@@ -271,11 +228,29 @@ sfsEdgeStore/
 
 详细服务说明请查看 [商业服务文档](./docs/pricing/SERVICES.md)。
 
+---
+
+## 📚 文档中心
+
+完整的文档请查看 [文档中心](./docs/README.md)，包含：
+
+- 📖 **使用指南** - 用户手册、管理员指南、FAQ
+- 🔧 **技术文档** - API 参考、架构设计、设计决策
+- 🚀 **最佳实践** - 部署、监控、安全、备份恢复
+- 💼 **商业服务** - 技术支持、实施咨询、定制开发
+- 💰 **销售计划** - 销售策略、定价方案、成功指标
+
+---
+
 ## 🤝 贡献
 
 欢迎提交 Issue 和 Pull Request！
 
 请查看 [CONTRIBUTING.md](./CONTRIBUTING.md) 了解如何参与贡献。
+
+## 🔒 安全
+
+请查看 [SECURITY.md](./SECURITY.md) 了解安全策略和漏洞报告方式。
 
 ## 📄 许可证
 
