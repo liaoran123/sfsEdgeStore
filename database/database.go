@@ -51,7 +51,7 @@ func Init(dbPath string, useEncryption bool, encryptionKey, algorithm string) er
 
 	// 打开数据库
 	var err error
-	if useEncryption {
+	if useEncryption { //默认配置是不加密，约 70-80% 的场景 可以不使用加密（性能优先）；约 20-30% 的场景 建议或必须使用加密
 		if encryptionKey == "" {
 			return fmt.Errorf("encryption enabled but no encryption key provided")
 		}

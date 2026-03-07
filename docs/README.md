@@ -22,8 +22,8 @@
 - [EULA.md](./legal/EULA.md) - 最终用户许可协议
 
 ### 💰 定价与许可 (pricing/)
-- [PRICING.md](./pricing/PRICING.md) - 定价方案和套餐说明
 - [SALES_PLAN.md](./pricing/SALES_PLAN.md) - 2026 年度销售计划
+- [SERVICES.md](./pricing/SERVICES.md) - 商业服务说明
 
 ### 🛟 支持与服务 (support/)
 - [SUPPORT.md](./support/SUPPORT.md) - 技术支持政策
@@ -33,6 +33,7 @@
 ### 🔐 安全与合规 (security/)
 - [SECURITY.md](./security/SECURITY.md) - 安全策略和最佳实践
 - [PRIVACY_POLICY.md](./security/PRIVACY_POLICY.md) - 隐私政策
+- [ENCRYPTION_GUIDE.md](./security/ENCRYPTION_GUIDE.md) - 加密配置最佳实践
 
 ### 👥 用户指南 (user-guide/)
 - [USER_MANUAL.md](./user-guide/USER_MANUAL.md) - 完整用户手册
@@ -56,17 +57,6 @@
 - [INTEGRATION_GUIDE.md](./integrations/INTEGRATION_GUIDE.md) - 系统集成指南
 - [EDGEX_INTEGRATION.md](./integrations/EDGEX_INTEGRATION.md) - EdgeX 集成详细指南
 - [THIRD_PARTY.md](./integrations/THIRD_PARTY.md) - 第三方集成说明
-
-### 🚀 最佳实践 (best-practices/)
-*(待补充)*
-- BEST_PRACTICES.md - 最佳实践指南
-- USE_CASES.md - 实际用例
-- CASE_STUDIES.md - 案例研究
-
-### 📖 培训资源 (training/)
-*(待补充)*
-- TRAINING.md - 培训材料
-- TUTORIALS.md - 教程合集
 
 ---
 
@@ -94,7 +84,7 @@
 
 - **文档反馈**: [提交 Issue](../../issues)
 - **技术支持**: 详见 [SUPPORT.md](./support/SUPPORT.md)
-- **销售咨询**: 详见 [PRICING.md](./pricing/PRICING.md)
+- **销售咨询**: 详见 [SERVICES.md](./pricing/SERVICES.md)
 
 ---
 
@@ -109,7 +99,7 @@
 ## 📅 文档版本
 
 - **当前版本**: 1.0
-- **最后更新**: 2026-03-07
+- **最后更新**: 2026-03-08
 - **维护团队**: sfsEdgeStore 文档团队
 
 ---

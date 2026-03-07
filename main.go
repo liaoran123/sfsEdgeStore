@@ -143,20 +143,20 @@ func main() {
 	if err := resourceMonitor.Start(); err != nil {
 		log.Printf("Failed to start resource monitor: %v", err)
 	}
+	/*
+		// 初始化并启动模拟器
+		if appConfig.EnableSimulator {
+			simConfig := simulator.DefaultSimulatorConfig()
+			simConfig.Enabled = true
+			simConfig.IntervalMin = time.Duration(appConfig.SimulatorIntervalMin) * time.Second
+			simConfig.IntervalMax = time.Duration(appConfig.SimulatorIntervalMax) * time.Second
 
-	// 初始化并启动模拟器
-	if appConfig.EnableSimulator {
-		simConfig := simulator.DefaultSimulatorConfig()
-		simConfig.Enabled = true
-		simConfig.IntervalMin = time.Duration(appConfig.SimulatorIntervalMin) * time.Second
-		simConfig.IntervalMax = time.Duration(appConfig.SimulatorIntervalMax) * time.Second
-
-		simulatorInstance = simulator.NewSimulator(monitorInstance, analyzerInstance, simConfig)
-		if err := simulatorInstance.Start(); err != nil {
-			log.Printf("Failed to start simulator: %v", err)
+			simulatorInstance = simulator.NewSimulator(monitorInstance, analyzerInstance, simConfig)
+			if err := simulatorInstance.Start(); err != nil {
+				log.Printf("Failed to start simulator: %v", err)
+			}
 		}
-	}
-
+	*/
 	// 启动 HTTP 服务器，提供查询接口
 	serverInstance := server.NewServer(database.Table, appConfig, monitorInstance, retentionManager, alertNotifier, syncManager, resourceMonitor)
 	if err := serverInstance.Start(); err != nil {
@@ -193,12 +193,12 @@ func main() {
 	if resourceMonitor != nil {
 		resourceMonitor.Stop()
 	}
-
-	// 停止模拟器
-	if simulatorInstance != nil {
-		simulatorInstance.Stop()
-	}
-
+	/*
+		// 停止模拟器
+		if simulatorInstance != nil {
+			simulatorInstance.Stop()
+		}
+	*/
 	// 给服务器 5 秒的时间来完成正在处理的请求
 	time.Sleep(5 * time.Second)
 
