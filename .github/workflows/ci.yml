@@ -92,17 +92,12 @@ jobs:
 
     - name: Download all artifacts
       uses: actions/download-artifact@v4
-      with:
-        path: ./artifacts
 
-    - name: List downloaded artifacts
+    - name: List and prepare files
       run: |
-        echo "=== Artifacts directory structure ==="
-        find ./artifacts -type f
-        echo "=== Moving to release directory ==="
+        ls -la
         mkdir -p release
-        find ./artifacts -type f -exec mv {} release/ \;
-        echo "=== Release files ==="
+        find . -name "sfsedgestore-*" -type f -exec mv {} release/ \;
         ls -lh release/
 
     - name: Create Release
