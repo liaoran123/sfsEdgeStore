@@ -50,9 +50,23 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        goos: [linux, windows, darwin]
-        goarch: [amd64, arm64]
-        exclude:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: linux
+            goarch: arm
+            goarm: 7
+          - goos: linux
+            goarch: arm
+            goarm: 6
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
           - goos: darwin
             goarch: arm64
     steps:
@@ -67,10 +81,15 @@ jobs:
       env:
         GOOS: ${{ matrix.goos }}
         GOARCH: ${{ matrix.goarch }}
+        GOARM: ${{ matrix.goarm || '' }}
       run: |
-        BINARY_NAME=sfsedgestore
+        if [ "${{ matrix.goarch }}" = "arm" ] && [ -n "${{ matrix.goarm }}" ]; then
+          BINARY_NAME=sfsedgestore-${{ matrix.goos }}-${{ matrix.goarch }}v${{ matrix.goarm }}
+        else
+          BINARY_NAME=sfsedgestore-${{ matrix.goos }}-${{ matrix.goarch }}
+        fi
         if [ "${{ matrix.goos }}" = "windows" ]; then
-          BINARY_NAME=sfsedgestore.exe
+          BINARY_NAME=${BINARY_NAME}.exe
         fi
         CGO_ENABLED=0 go build -ldflags "-s -w" -o $BINARY_NAME
         mkdir -p artifacts
@@ -96,13 +115,16 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         path: ./artifacts
-        merge-multiple: true
 
-    - name: Prepare release files
+    - name: List downloaded artifacts
       run: |
+        echo "=== Artifacts directory structure ==="
+        find ./artifacts -type f
+        echo "=== Moving to release directory ==="
         mkdir -p release
-        find ./artifacts -type f \( -name "sfsedgestore" -o -name "sfsedgestore.exe" \) -exec mv {} release/ \;
-        ls -la release/
+        find ./artifacts -type f -exec mv {} release/ \;
+        echo "=== Release files ==="
+        ls -lh release/
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
