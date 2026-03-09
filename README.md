@@ -240,6 +240,20 @@ GET /alerts
 
 ---
 
+## 📖 电子书籍
+
+### 培训手册
+适合初学者和快速上手的完整培训教程。
+
+📚 [EdgeX Foundry 与 sfsDb 结合：工业物联网边缘计算数据存储实战](./book/README.md)
+
+### 技术深度解析
+面向 Go 语言和 EdgeX Foundry 开发人员的深度技术书籍，包含源码级解析、架构设计、性能调优等内容。
+
+📚 [sfsEdgeStore 技术深度解析](./tech-book/00-前言与目录.md)
+
+---
+
 ## 🤝 贡献
 
 欢迎提交 Issue 和 Pull Request！
