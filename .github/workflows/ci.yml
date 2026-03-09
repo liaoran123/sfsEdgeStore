@@ -29,7 +29,7 @@ jobs:
         path: |
           ~/.cache/go-build
           ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}
+        key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('go.sum') }}
         restore-keys: |
           ${{ runner.os }}-go-${{ matrix.go-version }}-
 
@@ -55,12 +55,6 @@ jobs:
             goarch: amd64
           - goos: linux
             goarch: arm64
-          - goos: linux
-            goarch: arm
-            goarm: 7
-          - goos: linux
-            goarch: arm
-            goarm: 6
           - goos: windows
             goarch: amd64
           - goos: windows
@@ -81,13 +75,8 @@ jobs:
       env:
         GOOS: ${{ matrix.goos }}
         GOARCH: ${{ matrix.goarch }}
-        GOARM: ${{ matrix.goarm || '' }}
       run: |
-        if [ "${{ matrix.goarch }}" = "arm" ] && [ -n "${{ matrix.goarm }}" ]; then
-          BINARY_NAME=sfsedgestore-${{ matrix.goos }}-${{ matrix.goarch }}v${{ matrix.goarm }}
-        else
-          BINARY_NAME=sfsedgestore-${{ matrix.goos }}-${{ matrix.goarch }}
-        fi
+        BINARY_NAME=sfsedgestore-${{ matrix.goos }}-${{ matrix.goarch }}
         if [ "${{ matrix.goos }}" = "windows" ]; then
           BINARY_NAME=${BINARY_NAME}.exe
         fi
