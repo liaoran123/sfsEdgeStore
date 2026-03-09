@@ -146,6 +146,7 @@
 ## 联系我们
 
 - **邮箱**: sfsweb@qq.com
+- **微信**: sfsdb0（添加时请注明"sfs"）
 - **GitHub**: https://github.com/liaoran123/sfsEdgeStore
 
 ---
