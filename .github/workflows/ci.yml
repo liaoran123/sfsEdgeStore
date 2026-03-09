@@ -92,12 +92,18 @@ jobs:
 
     - name: Download all artifacts
       uses: actions/download-artifact@v4
+      with:
+        path: ./artifacts
+        merge-multiple: true
 
-    - name: List and prepare files
+    - name: Prepare release files
       run: |
-        ls -la
         mkdir -p release
-        find . -name "sfsedgestore-*" -type f -exec mv {} release/ \;
+        echo "=== Artifacts directory ==="
+        ls -la ./artifacts/
+        echo "=== Moving files ==="
+        find ./artifacts -type f -exec mv {} release/ \;
+        echo "=== Release files ==="
         ls -lh release/
 
     - name: Create Release
