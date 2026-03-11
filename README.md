@@ -274,6 +274,3 @@ Apache License 2.0
 - [sfsDb](https://github.com/liaoran123/sfsDb)
 - [Eclipse Paho MQTT](https://www.eclipse.org/paho/)
 
----
-
-**sfsEdgeStore** - 让边缘数据存储更简单！🚀

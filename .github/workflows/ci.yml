@@ -37,6 +37,7 @@ jobs:
 
   build-artifacts:
     needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -83,8 +84,8 @@ jobs:
 
   release:
     needs: build-artifacts
-    runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
