@@ -4,6 +4,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"sfsEdgeStore/common"
 )
 
 func TestDatabaseInit(t *testing.T) {
@@ -39,9 +41,10 @@ func TestInsertAndQuery(t *testing.T) {
 		t.Fatalf("Failed to initialize database: %v", err)
 	}
 
+	formattedDeviceName := common.FormatDeviceName("Device001")
 	testData := map[string]any{
 		"id":         "test_id_1",
-		"deviceName": "Device001",
+		"deviceName": formattedDeviceName,
 		"reading":    "temperature",
 		"value":      25.5,
 		"valueType":  "Float32",

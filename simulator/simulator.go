@@ -8,8 +8,8 @@ import (
 
 	"sfsEdgeStore/analyzer"
 	"sfsEdgeStore/common"
-	"sfsEdgeStore/database"
-	"sfsEdgeStore/edgex"
+	"sfsEdgeStore/core/database"
+	"sfsEdgeStore/core/edgex"
 	"sfsEdgeStore/monitor"
 )
 

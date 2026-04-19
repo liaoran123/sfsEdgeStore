@@ -1,0 +1,74 @@
+# sfsEdgeStore Device Configuration (GitOps Mode)
+# This file is designed for GitOps workflow and international users.
+# Priority: YAML > CSV (if both exist, YAML takes precedence)
+
+devices:
+  # Temperature Sensor - Production Line A
+  - name: "temp-sensor-001"
+    protocol: "modbus-tcp"
+    address: "192.168.1.100:502"
+    unitId: 1
+    template: "modbus/temperature.yaml"
+    interval: "1s"
+    tags:
+      - "production"
+      - "zone-a"
+      - "temperature"
+
+  # Temperature Sensor - Production Line B
+  - name: "temp-sensor-002"
+    protocol: "modbus-tcp"
+    address: "192.168.1.101:502"
+    unitId: 1
+    template: "modbus/temperature.yaml"
+    interval: "1s"
+    tags:
+      - "production"
+      - "zone-b"
+      - "temperature"
+
+  # Temperature Sensor - Warehouse
+  - name: "temp-sensor-003"
+    protocol: "modbus-tcp"
+    address: "192.168.1.102:502"
+    unitId: 1
+    template: "modbus/temperature.yaml"
+    interval: "5s"
+    tags:
+      - "warehouse"
+      - "temperature"
+
+  # Pressure Sensor - Production Line A
+  - name: "pressure-sensor-001"
+    protocol: "modbus-tcp"
+    address: "192.168.1.110:502"
+    unitId: 1
+    template: "modbus/pressure.yaml"
+    interval: "2s"
+    tags:
+      - "production"
+      - "zone-a"
+      - "pressure"
+
+  # Pressure Sensor - Production Line B
+  - name: "pressure-sensor-002"
+    protocol: "modbus-tcp"
+    address: "192.168.1.111:502"
+    unitId: 1
+    template: "modbus/pressure.yaml"
+    interval: "2s"
+    tags:
+      - "production"
+      - "zone-b"
+      - "pressure"
+
+  # MQTT Sensor - HVAC Controller
+  - name: "hvac-controller"
+    protocol: "mqtt"
+    address: "192.168.1.200:1883"
+    topic: "factory/hvac/status"
+    template: "mqtt/generic.yaml"
+    interval: "10s"
+    tags:
+      - "hvac"
+      - "zone-a"

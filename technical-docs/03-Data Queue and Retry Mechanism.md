@@ -1,0 +1,401 @@
+# Data Queue and Retry Mechanism
+
+## Overview
+
+The data queue provides temporary persistence functionality, used to cache data when database writing fails, ensuring no data loss.
+
+## Core Structure
+
+### Queue Struct
+
+```go
+// queue/queue.go:32-35
+type Queue struct {
+	queueDir string
+	mutex    sync.Mutex
+}
+```
+
+## Creating Queue
+
+### NewQueue Function
+
+```go
+// queue/queue.go:38-47
+func NewQueue(queueDir string) (*Queue, error) {
+	if err := os.MkdirAll(queueDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create queue directory: %v", err)
+	}
+
+	return &Queue{
+		queueDir: queueDir,
+	}, nil
+}
+```
+
+## Enqueue Operation
+
+### Enqueue Function
+
+```go
+// queue/queue.go:50-70
+func (q *Queue) Enqueue(data interface{}) error {
+	q.mutex.Lock()
+	defer q.mutex.Unlock()
+
+	filename := fmt.Sprintf("%d.json", time.Now().UnixNano())
+	filepath := filepath.Join(q.queueDir, filename)
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal data: %v", err)
+	}
+
+	if err := os.WriteFile(filepath, jsonData, 0644); err != nil {
+		return fmt.Errorf("failed to write to queue: %v", err)
+	}
+
+	return nil
+}
+```
+
+## Dequeue Operation
+
+### Dequeue Function
+
+```go
+// queue/queue.go:73-115
+func (q *Queue) Dequeue() (interface{}, error) {
+	q.mutex.Lock()
+	defer q.mutex.Unlock()
+
+	files, err := os.ReadDir(q.queueDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read queue directory: %v", err)
+	}
+
+	var targetFile os.DirEntry
+	for _, file := range files {
+		if !file.IsDir() && filepath.Ext(file.Name()) == ".json" {
+			targetFile = file
+			break
+		}
+	}
+
+	if targetFile == nil {
+		return nil, nil
+	}
+
+	filepath := filepath.Join(q.queueDir, targetFile.Name())
+	jsonData, err := os.ReadFile(filepath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read queue file: %v", err)
+	}
+
+	var data interface{}
+	if err := json.Unmarshal(jsonData, &data); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal data: %v", err)
+	}
+
+	if err := os.Remove(filepath); err != nil {
+		return nil, fmt.Errorf("failed to remove queue file: %v", err)
+	}
+
+	return data, nil
+}
+```
+
+## Get Queue Size
+
+### Size Function
+
+```go
+// queue/queue.go:118-137
+func (q *Queue) Size() (int, error) {
+	q.mutex.Lock()
+	defer q.mutex.Unlock()
+
+	files, err := os.ReadDir(q.queueDir)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read queue directory: %v", err)
+	}
+
+	count := 0
+	for _, file := range files {
+		if !file.IsDir() && filepath.Ext(file.Name()) == ".json" {
+			count++
+		}
+	}
+
+	return count, nil
+}
+```
+
+## Process Queue
+
+### ProcessQueue Function
+
+```go
+// queue/queue.go:144-185
+func (q *Queue) ProcessQueue(processFunc func(interface{}) error) {
+	go func() {
+		for {
+			size, err := q.Size()
+			if err != nil {
+				log.Printf("Failed to get queue size: %v", err)
+				time.Sleep(5 * time.Second)
+				continue
+			}
+
+			if size == 0 {
+				time.Sleep(5 * time.Second)
+				continue
+			}
+
+			data, err := q.Dequeue()
+			if err != nil {
+				log.Printf("Failed to dequeue data: %v", err)
+				time.Sleep(5 * time.Second)
+				continue
+			}
+
+			if data == nil {
+				time.Sleep(5 * time.Second)
+				continue
+			}
+
+			if err := processFunc(data); err != nil {
+				log.Printf("Failed to process queue data: %v", err)
+				if err := q.Enqueue(data); err != nil {
+					log.Printf("Failed to re-enqueue data: %v", err)
+				}
+				time.Sleep(5 * time.Second)
+			}
+		}
+	}()
+}
+```
+
+## Testing
+
+### Queue Testing
+
+```go
+// queue/queue_test.go
+package queue
+
+import (
+	"os"
+	"testing"
+	"time"
+)
+
+func TestQueueCreation(t *testing.T) {
+	queueDir := "./test_queue"
+	defer os.RemoveAll(queueDir)
+
+	q, err := NewQueue(queueDir)
+	if err != nil {
+		t.Fatalf("Failed to create queue: %v", err)
+	}
+
+	if _, err := os.Stat(queueDir); os.IsNotExist(err) {
+		t.Fatalf("Queue directory was not created: %v", err)
+	}
+
+	size, err := q.Size()
+	if err != nil {
+		t.Fatalf("Failed to get queue size: %v", err)
+	}
+
+	if size != 0 {
+		t.Errorf("Expected queue size 0, got %d", size)
+	}
+}
+
+func TestEnqueueAndDequeue(t *testing.T) {
+	queueDir := "./test_queue"
+	defer os.RemoveAll(queueDir)
+
+	q, err := NewQueue(queueDir)
+	if err != nil {
+		t.Fatalf("Failed to create queue: %v", err)
+	}
+
+	testData := map[string]string{
+		"key1": "value1",
+		"key2": "value2",
+	}
+
+	if err := q.Enqueue(testData); err != nil {
+		t.Fatalf("Failed to enqueue data: %v", err)
+	}
+
+	size, err := q.Size()
+	if err != nil {
+		t.Fatalf("Failed to get queue size: %v", err)
+	}
+
+	if size != 1 {
+		t.Errorf("Expected queue size 1, got %d", size)
+	}
+
+	dequeuedData, err := q.Dequeue()
+	if err != nil {
+		t.Fatalf("Failed to dequeue data: %v", err)
+	}
+
+	dequeuedMap, ok := dequeuedData.(map[string]any)
+	if !ok {
+		t.Fatalf("Expected map[string]any, got %T", dequeuedData)
+	}
+
+	if dequeuedMap["key1"] != "value1" || dequeuedMap["key2"] != "value2" {
+		t.Errorf("Dequeued data does not match enqueued data")
+	}
+
+	size, err = q.Size()
+	if err != nil {
+		t.Fatalf("Failed to get queue size: %v", err)
+	}
+
+	if size != 0 {
+		t.Errorf("Expected queue size 0 after dequeue, got %d", size)
+	}
+}
+
+func TestProcessQueue(t *testing.T) {
+	queueDir := "./test_queue"
+	defer os.RemoveAll(queueDir)
+
+	q, err := NewQueue(queueDir)
+	if err != nil {
+		t.Fatalf("Failed to create queue: %v", err)
+	}
+
+	testData := "test data"
+
+	if err := q.Enqueue(testData); err != nil {
+		t.Fatalf("Failed to enqueue data: %v", err)
+	}
+
+	var processedData string
+	processComplete := false
+
+	q.ProcessQueue(func(data interface{}) error {
+		processedData = data.(string)
+		processComplete = true
+		return nil
+	})
+
+	time.Sleep(1 * time.Second)
+
+	if !processComplete {
+		t.Fatalf("Queue processing did not complete")
+	}
+
+	if processedData != testData {
+		t.Errorf("Processed data does not match enqueued data: expected %s, got %s", testData, processedData)
+	}
+
+	size, err := q.Size()
+	if err != nil {
+		t.Fatalf("Failed to get queue size: %v", err)
+	}
+
+	if size != 0 {
+		t.Errorf("Expected queue size 0 after processing, got %d", size)
+	}
+}
+
+func TestQueuePersistence(t *testing.T) {
+	queueDir := "./test_queue"
+	defer os.RemoveAll(queueDir)
+
+	q1, err := NewQueue(queueDir)
+	if err != nil {
+		t.Fatalf("Failed to create queue: %v", err)
+	}
+
+	testData := "persistent data"
+
+	if err := q1.Enqueue(testData); err != nil {
+		t.Fatalf("Failed to enqueue data: %v", err)
+	}
+
+	size, err := q1.Size()
+	if err != nil {
+		t.Fatalf("Failed to get queue size: %v", err)
+	}
+
+	if size != 1 {
+		t.Errorf("Expected queue size 1, got %d", size)
+	}
+
+	q2, err := NewQueue(queueDir)
+	if err != nil {
+		t.Fatalf("Failed to create queue: %v", err)
+	}
+
+	size, err = q2.Size()
+	if err != nil {
+		t.Fatalf("Failed to get queue size: %v", err)
+	}
+
+	if size != 1 {
+		t.Errorf("Expected queue size 1 after re-creating queue, got %d", size)
+	}
+
+	dequeuedData, err := q2.Dequeue()
+	if err != nil {
+		t.Fatalf("Failed to dequeue data: %v", err)
+	}
+
+	dequeuedStr, ok := dequeuedData.(string)
+	if !ok {
+		t.Fatalf("Expected string, got %T", dequeuedData)
+	}
+
+	if dequeuedStr != testData {
+		t.Errorf("Dequeued data does not match enqueued data: expected %s, got %s", testData, dequeuedStr)
+	}
+}
+```
+
+### Running Tests
+
+```bash
+go test ./queue -v
+```
+
+## API Interface
+
+### NewQueue Create Queue
+
+```go
+func NewQueue(queueDir string) (*Queue, error)
+```
+
+### Enqueue
+
+```go
+func (q *Queue) Enqueue(data interface{}) error
+```
+
+### Dequeue
+
+```go
+func (q *Queue) Dequeue() (interface{}, error)
+```
+
+### Size Get Queue Size
+
+```go
+func (q *Queue) Size() (int, error)
+```
+
+### ProcessQueue Process Queue
+
+```go
+func (q *Queue) ProcessQueue(processFunc func(interface{}) error)
+```

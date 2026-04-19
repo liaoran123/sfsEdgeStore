@@ -59,7 +59,7 @@ type Config struct {
 	AlertMQTTTopic            string   `json:"alert_mqtt_topic" env:"EDGEX_ALERT_MQTT_TOPIC"`
 	AlertWebhookURL           string   `json:"alert_webhook_url" env:"EDGEX_ALERT_WEBHOOK_URL"`
 	AlertMinSeverity          string   `json:"alert_min_severity" env:"EDGEX_ALERT_MIN_SEVERITY"`
-	// 数据同步配置
+	// 数据同步配置（企业版功能）
 	EnableDataSync        bool   `json:"enable_data_sync" env:"EDGEX_ENABLE_DATA_SYNC"`
 	DataSyncMQTTTopic     string `json:"data_sync_mqtt_topic" env:"EDGEX_DATA_SYNC_MQTT_TOPIC"`
 	DataSyncQueueDir      string `json:"data_sync_queue_dir" env:"EDGEX_DATA_SYNC_QUEUE_DIR"`
@@ -80,6 +80,20 @@ type Config struct {
 	EnableSimulator       bool          `json:"enable_simulator" env:"EDGEX_ENABLE_SIMULATOR"`
 	SimulatorIntervalMin  int           `json:"simulator_interval_min" env:"EDGEX_SIMULATOR_INTERVAL_MIN"`
 	SimulatorIntervalMax  int           `json:"simulator_interval_max" env:"EDGEX_SIMULATOR_INTERVAL_MAX"`
+	// 企业版许可证配置
+	LicenseType    string `json:"license_type" env:"EDGEX_LICENSE_TYPE"`     // "opensource" | "enterprise"
+	LicenseKey     string `json:"license_key" env:"EDGEX_LICENSE_KEY"`       // 企业版许可证密钥
+	EnterpriseFeatures EnterpriseFeatures `json:"enterprise_features"`          // 企业版功能开关
+}
+
+// EnterpriseFeatures 企业版功能开关
+type EnterpriseFeatures struct {
+	EnableCloudSync     bool `json:"enable_cloud_sync"`      // 云端数据同步
+	EnableRemoteConfig  bool `json:"enable_remote_config"`   // 远程配置管理
+	EnableMultiTenant   bool `json:"enable_multi_tenant"`    // 多租户支持
+	EnableAdvancedAnalytics bool `json:"enable_advanced_analytics"` // 高级数据分析
+	EnableBigScreenMode bool `json:"enable_big_screen_mode"` // 本地大屏模式（解锁多图表排版）
+	MaxDevices          int  `json:"max_devices"`            // 最大设备数限制（0表示无限制）
 }
 
 // ThresholdConfig 阈值配置
@@ -249,6 +263,16 @@ func Load() (*Config, error) {
 		EnableSimulator:      false,
 		SimulatorIntervalMin: 2,
 		SimulatorIntervalMax: 5,
+		// 企业版配置默认值
+		LicenseType: "opensource", // 默认开源版
+		EnterpriseFeatures: EnterpriseFeatures{
+			EnableCloudSync:      false,
+			EnableRemoteConfig:   false,
+			EnableMultiTenant:    false,
+			EnableAdvancedAnalytics: false,
+			EnableBigScreenMode:  false, // 开源版不支持多图表排版
+			MaxDevices:          50,    // 开源版限制50个设备
+		},
 	}
 
 	// 2. 尝试从EdgeX配置中心加载

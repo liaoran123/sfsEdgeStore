@@ -1,0 +1,6 @@
+name,ip,protocol,template,interval
+temp-sensor-001,192.168.1.10,modbus-tcp,modbus/temperature,1s
+temp-sensor-002,192.168.1.11,modbus-tcp,modbus/temperature,1s
+temp-sensor-003,192.168.1.12,modbus-tcp,modbus/temperature,5s
+pressure-sensor-001,192.168.1.20,modbus-tcp,modbus/pressure,2s
+pressure-sensor-002,192.168.1.21,modbus-tcp,modbus/pressure,2s

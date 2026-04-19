@@ -15,8 +15,8 @@ import (
 	"sfsEdgeStore/analyzer"
 	"sfsEdgeStore/common"
 	"sfsEdgeStore/config"
-	"sfsEdgeStore/database"
-	"sfsEdgeStore/edgex"
+	"sfsEdgeStore/core/database"
+	"sfsEdgeStore/core/edgex"
 	"sfsEdgeStore/monitor"
 	"sfsEdgeStore/queue"
 

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	"sfsEdgeStore/alert"
@@ -13,12 +15,11 @@ import (
 	"sfsEdgeStore/backup"
 	"sfsEdgeStore/common"
 	"sfsEdgeStore/config"
-	"sfsEdgeStore/database"
-	"sfsEdgeStore/edgex"
+	"sfsEdgeStore/core/database"
+	"sfsEdgeStore/core/edgex"
 	"sfsEdgeStore/monitor"
-	"sfsEdgeStore/retention"
 	"sfsEdgeStore/resource"
-	"sfsEdgeStore/sync"
+	"sfsEdgeStore/retention"
 
 	"github.com/liaoran123/sfsDb/engine"
 	"github.com/liaoran123/sfsDb/storage"
@@ -31,19 +32,17 @@ type Server struct {
 	Monitor         *monitor.Monitor
 	RetentionMgr    *retention.RetentionManager
 	AlertNotifier   *alert.Notifier
-	SyncManager     *sync.SyncManager
 	ResourceMonitor *resource.ResourceMonitor
 }
 
 // NewServer 创建一个新的服务器实例
-func NewServer(table *engine.Table, cfg *config.Config, monitor *monitor.Monitor, retentionMgr *retention.RetentionManager, alertNotifier *alert.Notifier, syncManager *sync.SyncManager, resourceMonitor *resource.ResourceMonitor) *Server {
+func NewServer(table *engine.Table, cfg *config.Config, monitor *monitor.Monitor, retentionMgr *retention.RetentionManager, alertNotifier *alert.Notifier, resourceMonitor *resource.ResourceMonitor) *Server {
 	return &Server{
 		Table:           table,
 		Config:          cfg,
 		Monitor:         monitor,
 		RetentionMgr:    retentionMgr,
 		AlertNotifier:   alertNotifier,
-		SyncManager:     syncManager,
 		ResourceMonitor: resourceMonitor,
 	}
 }
@@ -104,6 +103,14 @@ func (s *Server) registerRoutes() {
 	http.HandleFunc("/healthz", s.handleHealth)
 	http.HandleFunc("/ready", s.handleReady)
 
+	// Web界面路由 - 开源版基础功能
+	http.HandleFunc("/", s.handleWebIndex)
+	http.HandleFunc("/dashboard", s.handleWebIndex)
+	http.HandleFunc("/static/", s.handleStaticFiles)
+
+	// 许可证信息API - 不需要认证
+	http.HandleFunc("/api/license", s.handleLicenseInfo)
+
 	// 数据查询API - 使用中间件处理deviceName格式化和认证
 	http.HandleFunc("/api/readings", auth.AuthMiddleware(DeviceNameMiddleware(s.handleQueryReadings)))
 
@@ -141,11 +148,6 @@ func (s *Server) registerRoutes() {
 	// 告警通知API - 需要认证和管理员权限
 	http.HandleFunc("/api/alerts/notifier/status", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleAlertNotifierStatus)))
 	http.HandleFunc("/api/alerts/test", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleTestAlert)))
-
-	// 数据同步API - 需要认证和管理员权限
-	http.HandleFunc("/api/sync/status", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleSyncStatus)))
-	http.HandleFunc("/api/sync/start", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleSyncStart)))
-	http.HandleFunc("/api/sync/database", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleSyncFromDatabase)))
 
 	// 配置热更新API - 需要认证和管理员权限
 	http.HandleFunc("/api/config/get", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleGetConfig)))
@@ -1003,102 +1005,6 @@ func (s *Server) handleTestAlert(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleSyncStatus 处理获取同步状态请求
-func (s *Server) handleSyncStatus(w http.ResponseWriter, r *http.Request) {
-	if s.Monitor != nil {
-		s.Monitor.IncrementHTTPRequests()
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-
-	if s.SyncManager == nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Sync manager not initialized"})
-		return
-	}
-
-	status := s.SyncManager.GetStatus()
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status": "success",
-		"data":   status,
-	})
-}
-
-// handleSyncStart 处理启动同步请求
-func (s *Server) handleSyncStart(w http.ResponseWriter, r *http.Request) {
-	if s.Monitor != nil {
-		s.Monitor.IncrementHTTPRequests()
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
-		return
-	}
-
-	if s.SyncManager == nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Sync manager not initialized"})
-		return
-	}
-
-	if err := s.SyncManager.Start(); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		return
-	}
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":  "success",
-		"message": "Sync manager started",
-	})
-}
-
-// handleSyncFromDatabase 处理从数据库同步请求
-func (s *Server) handleSyncFromDatabase(w http.ResponseWriter, r *http.Request) {
-	if s.Monitor != nil {
-		s.Monitor.IncrementHTTPRequests()
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
-		return
-	}
-
-	if s.SyncManager == nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Sync manager not initialized"})
-		return
-	}
-
-	var req struct {
-		StartTimestamp int64 `json:"start_timestamp"`
-		EndTimestamp   int64 `json:"end_timestamp"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request body"})
-		return
-	}
-
-	if err := s.SyncManager.SyncFromDatabase(req.StartTimestamp, req.EndTimestamp); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		return
-	}
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":  "success",
-		"message": "Database sync started",
-	})
-}
-
 // handleGetConfig 处理获取配置请求
 func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 	if s.Monitor != nil {
@@ -1248,4 +1154,67 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(statusCode)
 	json.NewEncoder(w).Encode(readyStatus)
+}
+
+// handleWebIndex 处理Web界面首页
+func (s *Server) handleWebIndex(w http.ResponseWriter, r *http.Request) {
+	// 获取可执行文件所在目录
+	execPath, err := os.Executable()
+	if err != nil {
+		http.Error(w, "Failed to get executable path", http.StatusInternalServerError)
+		return
+	}
+	webDir := filepath.Join(filepath.Dir(execPath), "web")
+	if _, err := os.Stat(webDir); os.IsNotExist(err) {
+		webDir = "./web"
+	}
+
+	indexFile := filepath.Join(webDir, "index.html")
+	if _, err := os.Stat(indexFile); os.IsNotExist(err) {
+		http.Error(w, "Web interface not found. Please ensure the 'web' directory exists.", http.StatusNotFound)
+		return
+	}
+
+	http.ServeFile(w, r, indexFile)
+}
+
+// handleStaticFiles 处理静态文件请求
+func (s *Server) handleStaticFiles(w http.ResponseWriter, r *http.Request) {
+	// 获取可执行文件所在目录
+	execPath, err := os.Executable()
+	if err != nil {
+		http.Error(w, "Failed to get executable path", http.StatusInternalServerError)
+		return
+	}
+	webDir := filepath.Join(filepath.Dir(execPath), "web")
+	if _, err := os.Stat(webDir); os.IsNotExist(err) {
+		webDir = "./web"
+	}
+
+	filePath := filepath.Join(webDir, filepath.FromSlash(r.URL.Path[len("/static/"):]))
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		http.Error(w, "File not found", http.StatusNotFound)
+		return
+	}
+
+	http.ServeFile(w, r, filePath)
+}
+
+// handleLicenseInfo 处理许可证信息请求
+func (s *Server) handleLicenseInfo(w http.ResponseWriter, r *http.Request) {
+	cfg := config.GetConfigManager().GetConfig()
+	if cfg == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"license_type": "opensource",
+			"features": config.EnterpriseFeatures{
+				MaxDevices: 50,
+			},
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"license_type": cfg.LicenseType,
+		"features":     cfg.EnterpriseFeatures,
+	})
 }

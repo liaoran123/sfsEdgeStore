@@ -1,0 +1,30 @@
+name: "Temperature-Sensor"
+manufacturer: "Generic"
+model: "Temp-V1"
+labels:
+  - "modbus"
+  - "temperature"
+description: "Generic Modbus Temperature Sensor"
+
+deviceResources:
+  - name: "CurrentTemp"
+    description: "Current temperature reading"
+    properties:
+      valueType: "Float32"
+      readWrite: "R"
+      defaultValue: "0"
+      units:
+        type: "String"
+        readWrite: "R"
+        defaultValue: "Celsius"
+      attributes:
+        PrimaryRegisterAddress: "100"
+        PrimaryRegisterType: "InputRegister"
+
+deviceCommands:
+  - name: "GetTemp"
+    readWrite: "R"
+    resourceOperations:
+      - resource: "CurrentTemp"
+        index: "0"
+        operation: "get"

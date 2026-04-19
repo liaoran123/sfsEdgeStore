@@ -213,6 +213,11 @@ func (m *Monitor) RecordError(errorType, message string) {
 	}
 }
 
+// RecordInfo 记录信息
+func (m *Monitor) RecordInfo(infoType, message string) {
+	log.Printf("Info recorded: %s - %s", infoType, message)
+}
+
 // lastMetricValues 保存上次指标的数值快照
 type lastMetricValues struct {
 	httpRequests       int64

@@ -1,0 +1,31 @@
+# sfsEdgeStore Device Configuration (GitOps Mode)
+devices:
+  - name: "temp-sensor-001"
+    protocol: "modbus-tcp"
+    address: "192.168.1.100:502"
+    unitId: 1
+    template: "modbus/temperature.yaml"
+    interval: "1s"
+    tags:
+      - "production"
+      - "zone-a"
+
+  - name: "temp-sensor-002"
+    protocol: "modbus-tcp"
+    address: "192.168.1.101:502"
+    unitId: 1
+    template: "modbus/temperature.yaml"
+    interval: "1s"
+    tags:
+      - "production"
+      - "zone-b"
+
+  - name: "pressure-sensor-001"
+    protocol: "modbus-tcp"
+    address: "192.168.1.110:502"
+    unitId: 1
+    template: "modbus/pressure.yaml"
+    interval: "2s"
+    tags:
+      - "production"
+      - "zone-a"

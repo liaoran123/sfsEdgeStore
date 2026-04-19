@@ -1,0 +1,30 @@
+name: "Pressure-Sensor"
+manufacturer: "Generic"
+model: "Pressure-V1"
+labels:
+  - "modbus"
+  - "pressure"
+description: "Generic Modbus Pressure Sensor"
+
+deviceResources:
+  - name: "CurrentPressure"
+    description: "Current pressure reading"
+    properties:
+      valueType: "Float32"
+      readWrite: "R"
+      defaultValue: "0"
+      units:
+        type: "String"
+        readWrite: "R"
+        defaultValue: "Bar"
+      attributes:
+        PrimaryRegisterAddress: "200"
+        PrimaryRegisterType: "InputRegister"
+
+deviceCommands:
+  - name: "GetPressure"
+    readWrite: "R"
+    resourceOperations:
+      - resource: "CurrentPressure"
+        index: "0"
+        operation: "get"
