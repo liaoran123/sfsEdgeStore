@@ -79,8 +79,8 @@ func NewAgent(cfg *config.Config, monitor *monitor.Monitor) (*Agent, error) {
 func initMQTT(cfg *config.Config, commandTopic, heartbeatTopic, deviceID string) (mqtt.Client, error) {
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(cfg.MQTTBroker)
-	opts.SetClientID(cfg.ClientID)
-	opts.SetCleanSession(false)                   // 启用持久会话
+	opts.SetClientID(cfg.ClientID + "-agent")  // 使用唯一的 client_id 避免冲突
+	opts.SetCleanSession(true)                    // 启用清理会话
 	opts.SetAutoReconnect(true)                   // 启用自动重连
 	opts.SetMaxReconnectInterval(time.Minute * 5) // 最大重连间隔5分钟
 

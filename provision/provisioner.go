@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -19,25 +20,25 @@ const (
 )
 
 type Provisioner struct {
-	configManager  *devconfig.ConfigManager
+	configManager *devconfig.ConfigManager
 	edgeXEndpoint string
 	httpClient    *http.Client
 }
 
 type DeviceProfile struct {
-	Name        string `json:"name"`
-	Manufacturer string `json:"manufacturer"`
-	Model       string `json:"model"`
-	Labels      []string `json:"labels"`
-	Description string `json:"description"`
+	Name         string   `json:"name"`
+	Manufacturer string   `json:"manufacturer"`
+	Model        string   `json:"model"`
+	Labels       []string `json:"labels"`
+	Description  string   `json:"description"`
 }
 
 type Device struct {
-	Name        string                 `json:"name"`
-	ServiceName string                 `json:"serviceName"`
-	ProfileName string                 `json:"profileName"`
+	Name        string                       `json:"name"`
+	ServiceName string                       `json:"serviceName"`
+	ProfileName string                       `json:"profileName"`
 	Protocols   map[string]map[string]string `json:"protocols"`
-	AutoEvents  []AutoEvent            `json:"autoEvents,omitempty"`
+	AutoEvents  []AutoEvent                  `json:"autoEvents,omitempty"`
 }
 
 type AutoEvent struct {
@@ -53,11 +54,11 @@ type AutoEventV2 struct {
 }
 
 type DeviceV2 struct {
-	Name        string                 `json:"name"`
-	ServiceName string                 `json:"serviceName"`
-	ProfileName string                 `json:"profileName"`
+	Name        string                       `json:"name"`
+	ServiceName string                       `json:"serviceName"`
+	ProfileName string                       `json:"profileName"`
 	Protocols   map[string]map[string]string `json:"protocols"`
-	AutoEvents  []AutoEventV2          `json:"autoEvents,omitempty"`
+	AutoEvents  []AutoEventV2                `json:"autoEvents,omitempty"`
 }
 
 func NewProvisioner(cm *devconfig.ConfigManager, edgeXEndpoint string) *Provisioner {
@@ -74,7 +75,7 @@ func NewProvisioner(cm *devconfig.ConfigManager, edgeXEndpoint string) *Provisio
 	}
 }
 
-func (p *Provisioner) ProvisionDevice(name, ip, protocol, templateName, interval string) error {
+func (p *Provisioner) ProvisionDevice(name, ip, protocol, templateName, interval string, onChange bool, minInterval string, subscriptionTopic string) error {
 	if name == "" {
 		return fmt.Errorf("device name is required")
 	}
@@ -92,10 +93,16 @@ func (p *Provisioner) ProvisionDevice(name, ip, protocol, templateName, interval
 
 	protocolConfig := p.buildProtocolConfig(protocol, ip)
 
+	// 使用提供的interval或minInterval
+	eventInterval := interval
+	if minInterval != "" {
+		eventInterval = minInterval
+	}
+
 	autoEvents := []AutoEventV2{
 		{
-			Interval: interval,
-			OnChange: false,
+			Interval: eventInterval,
+			OnChange: onChange,
 			Resource: "GetValue",
 		},
 	}
@@ -108,7 +115,18 @@ func (p *Provisioner) ProvisionDevice(name, ip, protocol, templateName, interval
 		AutoEvents:  autoEvents,
 	}
 
-	return p.registerDevice(device)
+	// 注册设备到EdgeX
+	err := p.registerDevice(device)
+	if err != nil {
+		return err
+	}
+
+	// 如果设置了订阅主题，记录日志
+	if subscriptionTopic != "" {
+		log.Printf("Device %s configured with subscription topic: %s", name, subscriptionTopic)
+	}
+
+	return nil
 }
 
 func (p *Provisioner) ProvisionAll() error {
@@ -128,7 +146,7 @@ func (p *Provisioner) ProvisionAll() error {
 	for _, device := range devices {
 		fmt.Printf("Provisioning device: %s (IP: %s, Protocol: %s)...\n", device.Name, device.IP, device.Protocol)
 
-		err := p.ProvisionDevice(device.Name, device.IP, device.Protocol, device.Template, device.Interval)
+		err := p.ProvisionDevice(device.Name, device.IP, device.Protocol, device.Template, device.Interval, device.OnChange, device.MinInterval, device.SubscriptionTopic)
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("failed to provision %s: %v", device.Name, err))
 			continue
@@ -289,9 +307,9 @@ func (p *Provisioner) buildProtocolConfig(protocol, ip string) map[string]map[st
 	case "mqtt":
 		return map[string]map[string]string{
 			"mqtt": {
-				"BrokerURL":  ip,
-				"ClientID":   "device-mqtt",
-				"Topic":      "devices/" + ip + "/events",
+				"BrokerURL": ip,
+				"ClientID":  "device-mqtt",
+				"Topic":     "devices/" + ip + "/events",
 			},
 		}
 	default:

@@ -27,16 +27,18 @@ type APIKey struct {
 ### GenerateAPIKey 函数
 
 ```go
-// auth/api_key.go:22-45
+// auth/api_key.go:21-45
 func GenerateAPIKey(userID, role string, expiresIn time.Duration) (*APIKey, error) {
+	// 生成随机密钥
 	keyBytes := make([]byte, 32)
 	if _, err := rand.Read(keyBytes); err != nil {
 		return nil, err
 	}
 
 	key := hex.EncodeToString(keyBytes)
-
-	hash := key
+	
+	// 计算哈希值（实际应用中应该使用bcrypt等安全哈希）
+	hash := key // 简化处理，实际应用中应该使用bcrypt
 
 	now := time.Now()
 	return &APIKey{
@@ -55,7 +57,7 @@ func GenerateAPIKey(userID, role string, expiresIn time.Duration) (*APIKey, erro
 ### 检查 API Key 有效性
 
 ```go
-// auth/api_key.go:48-50
+// auth/api_key.go:47-50
 func (k *APIKey) IsValid() bool {
 	return k.Active && time.Now().Before(k.ExpiresAt)
 }
@@ -66,7 +68,7 @@ func (k *APIKey) IsValid() bool {
 ### 角色定义
 
 ```go
-// auth/rbac.go:6-11
+// auth/rbac.go:7-11
 const (
 	RoleAdmin     Role = "admin"
 	RoleUser      Role = "user"
@@ -133,7 +135,7 @@ func HasPermission(role Role, permission Permission) bool {
 ### 获取角色权限
 
 ```go
-// auth/rbac.go:61-66
+// auth/rbac.go:60-66
 func GetRolePermissions(role Role) []Permission {
 	if permissions, ok := RolePermissions[role]; ok {
 		return permissions
@@ -145,7 +147,7 @@ func GetRolePermissions(role Role) []Permission {
 ### 验证角色
 
 ```go
-// auth/rbac.go:69-72
+// auth/rbac.go:68-72
 func ValidateRole(role string) bool {
 	_, ok := RolePermissions[Role(role)]
 	return ok
@@ -159,6 +161,7 @@ func ValidateRole(role string) bool {
 ```go
 // auth/auth.go:11-13
 type AuthManager struct {
+	// 使用sfsDb存储API Key
 }
 ```
 
@@ -174,8 +177,9 @@ func NewAuthManager() *AuthManager {
 ### 添加 API Key
 
 ```go
-// auth/auth.go:21-37
+// auth/auth.go:20-37
 func (am *AuthManager) AddAPIKey(apiKey *APIKey) error {
+	// 转换为map存储到数据库
 	record := map[string]any{
 		"id":         apiKey.ID,
 		"key":        apiKey.Key,
@@ -187,6 +191,7 @@ func (am *AuthManager) AddAPIKey(apiKey *APIKey) error {
 		"active":     apiKey.Active,
 	}
 
+	// 插入到数据库
 	_, err := database.AuthTable.Insert(&record)
 	return err
 }
@@ -195,8 +200,9 @@ func (am *AuthManager) AddAPIKey(apiKey *APIKey) error {
 ### 根据 Key 获取 API Key
 
 ```go
-// auth/auth.go:40-76
+// auth/auth.go:39-76
 func (am *AuthManager) GetAPIKeyByKey(key string) (*APIKey, error) {
+	// 从数据库查询
 	fields := map[string]any{
 		"key": key,
 	}
@@ -214,6 +220,7 @@ func (am *AuthManager) GetAPIKeyByKey(key string) (*APIKey, error) {
 		return nil, errors.New("API key not found")
 	}
 
+	// 转换为APIKey结构
 	record := records[0]
 	createdAt := time.Unix(0, record["created_at"].(int64))
 	expiresAt := time.Unix(0, record["expires_at"].(int64))
@@ -236,8 +243,9 @@ func (am *AuthManager) GetAPIKeyByKey(key string) (*APIKey, error) {
 ### 撤销 API Key
 
 ```go
-// auth/auth.go:79-87
+// auth/auth.go:78-87
 func (am *AuthManager) RevokeAPIKey(key string) error {
+	// 更新数据库中的记录
 	updateRecord := map[string]any{
 		"key":    key,
 		"active": false,
@@ -250,10 +258,11 @@ func (am *AuthManager) RevokeAPIKey(key string) error {
 ### 列出所有 API Key
 
 ```go
-// auth/auth.go:90-126
+// auth/auth.go:89-126
 func (am *AuthManager) ListAPIKeys() ([]*APIKey, error) {
+	// 查询所有记录
 	fields := map[string]any{
-		"key": nil,
+		"key": nil, // 查询所有记录
 	}
 
 	iter, err := database.AuthTable.Search(&fields)
@@ -265,6 +274,7 @@ func (am *AuthManager) ListAPIKeys() ([]*APIKey, error) {
 	records := iter.GetRecords(true)
 	defer records.Release()
 
+	// 转换为APIKey数组
 	apiKeys := make([]*APIKey, 0, len(records))
 	for _, record := range records {
 		createdAt := time.Unix(0, record["created_at"].(int64))
@@ -291,8 +301,9 @@ func (am *AuthManager) ListAPIKeys() ([]*APIKey, error) {
 ### 清理过期 Key
 
 ```go
-// auth/auth.go:129-154
+// auth/auth.go:128-154
 func (am *AuthManager) CleanExpiredKeys() (int, error) {
+	// 获取所有记录
 	apiKeys, err := am.ListAPIKeys()
 	if err != nil {
 		return 0, err
@@ -303,6 +314,7 @@ func (am *AuthManager) CleanExpiredKeys() (int, error) {
 
 	for _, apiKey := range apiKeys {
 		if now.After(apiKey.ExpiresAt) {
+			// 删除过期的API Key
 			deleteFields := map[string]any{
 				"key": apiKey.Key,
 			}
@@ -321,19 +333,21 @@ func (am *AuthManager) CleanExpiredKeys() (int, error) {
 ### 启动清理任务
 
 ```go
-// auth/auth.go:157-174
+// auth/auth.go:156-174
 func (am *AuthManager) StartCleanupTask(interval time.Duration) {
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
 		for {
-			&lt;-ticker.C
+			<-ticker.C
 			count, err := am.CleanExpiredKeys()
 			if err != nil {
+				// 记录错误但继续运行
 				continue
 			}
-			if count &gt; 0 {
+			if count > 0 {
+				// 可以添加日志记录
 			}
 		}
 	}()
@@ -343,17 +357,20 @@ func (am *AuthManager) StartCleanupTask(interval time.Duration) {
 ### 创建 API Key
 
 ```go
-// auth/auth.go:177-196
+// auth/auth.go:176-196
 func (am *AuthManager) CreateAPIKey(userID, role string, expiresIn time.Duration) (*APIKey, error) {
+	// 验证角色
 	if !ValidateRole(role) {
 		return nil, errors.New("invalid role")
 	}
 
+	// 生成API Key
 	apiKey, err := GenerateAPIKey(userID, role, expiresIn)
 	if err != nil {
 		return nil, err
 	}
 
+	// 添加到存储
 	err = am.AddAPIKey(apiKey)
 	if err != nil {
 		return nil, err

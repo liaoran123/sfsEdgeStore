@@ -1,6 +1,8 @@
 package config
 
 import (
+	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"sync"
@@ -26,19 +28,23 @@ const (
 */
 // Config 配置结构体
 type Config struct {
-	DBPath     string `json:"db_path" env:"EDGEX_DB_PATH"`
-	MQTTBroker string `json:"mqtt_broker" env:"EDGEX_MQTT_BROKER"`
-	MQTTTopic  string `json:"mqtt_topic" env:"EDGEX_MQTT_TOPIC"`
-	ClientID   string `json:"client_id" env:"EDGEX_CLIENT_ID"`
-	HTTPPort   string `json:"http_port" env:"EDGEX_HTTP_PORT"`
+	DBPath        string `json:"db_path" env:"EDGEX_DB_PATH"`
+	MQTTBroker    string `json:"mqtt_broker" env:"EDGEX_MQTT_BROKER"`
+	MQTTTopic     string `json:"mqtt_topic" env:"EDGEX_MQTT_TOPIC"`
+	ClientID      string `json:"client_id" env:"EDGEX_CLIENT_ID"`
+	HTTPPort      string `json:"http_port" env:"EDGEX_HTTP_PORT"`
+	DevConfigPath string `json:"dev_config_path" env:"EDGEX_DEV_CONFIG_PATH"`
 	// TLS 配置
 	MQTTUseTLS     bool   `json:"mqtt_use_tls" env:"EDGEX_MQTT_USE_TLS"`
 	MQTTCACert     string `json:"mqtt_ca_cert" env:"EDGEX_MQTT_CA_CERT"`
 	MQTTClientCert string `json:"mqtt_client_cert" env:"EDGEX_MQTT_CLIENT_CERT"`
 	MQTTClientKey  string `json:"mqtt_client_key" env:"EDGEX_MQTT_CLIENT_KEY"`
-	HTTPUseTLS     bool   `json:"http_use_tls" env:"EDGEX_HTTP_USE_TLS"`
-	HTTPCert       string `json:"http_cert" env:"EDGEX_HTTP_CERT"`
-	HTTPKey        string `json:"http_key" env:"EDGEX_HTTP_KEY"`
+	// MQTT 认证
+	MQTTUsername string `json:"mqtt_username" env:"EDGEX_MQTT_USERNAME"`
+	MQTTPassword string `json:"mqtt_password" env:"EDGEX_MQTT_PASSWORD"`
+	HTTPUseTLS   bool   `json:"http_use_tls" env:"EDGEX_HTTP_USE_TLS"`
+	HTTPCert     string `json:"http_cert" env:"EDGEX_HTTP_CERT"`
+	HTTPKey      string `json:"http_key" env:"EDGEX_HTTP_KEY"`
 	// 数据库加密配置
 	DBUseEncryption       bool   `json:"db_use_encryption" env:"EDGEX_DB_USE_ENCRYPTION"`
 	DBEncryptionKey       string `json:"db_encryption_key" env:"EDGEX_DB_ENCRYPTION_KEY"`
@@ -77,23 +83,23 @@ type Config struct {
 	EnablePrometheus bool   `json:"enable_prometheus" env:"EDGEX_ENABLE_PROMETHEUS"`
 	PrometheusPath   string `json:"prometheus_path" env:"EDGEX_PROMETHEUS_PATH"`
 	// 模拟器配置
-	EnableSimulator       bool          `json:"enable_simulator" env:"EDGEX_ENABLE_SIMULATOR"`
-	SimulatorIntervalMin  int           `json:"simulator_interval_min" env:"EDGEX_SIMULATOR_INTERVAL_MIN"`
-	SimulatorIntervalMax  int           `json:"simulator_interval_max" env:"EDGEX_SIMULATOR_INTERVAL_MAX"`
-	// 企业版许可证配置
-	LicenseType    string `json:"license_type" env:"EDGEX_LICENSE_TYPE"`     // "opensource" | "enterprise"
-	LicenseKey     string `json:"license_key" env:"EDGEX_LICENSE_KEY"`       // 企业版许可证密钥
-	EnterpriseFeatures EnterpriseFeatures `json:"enterprise_features"`          // 企业版功能开关
+	EnableSimulator      bool `json:"enable_simulator" env:"EDGEX_ENABLE_SIMULATOR"`
+	SimulatorIntervalMin int  `json:"simulator_interval_min" env:"EDGEX_SIMULATOR_INTERVAL_MIN"`
+	SimulatorIntervalMax int  `json:"simulator_interval_max" env:"EDGEX_SIMULATOR_INTERVAL_MAX"`
+	// 许可证配置
+	LicenseType        string             `json:"license_type" env:"EDGEX_LICENSE_TYPE"` // "community" | "business" | "enterprise"
+	LicenseKey         string             `json:"license_key" env:"EDGEX_LICENSE_KEY"`   // 许可证密钥
+	EnterpriseFeatures EnterpriseFeatures `json:"enterprise_features"`                   // 功能开关
 }
 
 // EnterpriseFeatures 企业版功能开关
 type EnterpriseFeatures struct {
-	EnableCloudSync     bool `json:"enable_cloud_sync"`      // 云端数据同步
-	EnableRemoteConfig  bool `json:"enable_remote_config"`   // 远程配置管理
-	EnableMultiTenant   bool `json:"enable_multi_tenant"`    // 多租户支持
+	EnableCloudSync         bool `json:"enable_cloud_sync"`         // 云端数据同步
+	EnableRemoteConfig      bool `json:"enable_remote_config"`      // 远程配置管理
+	EnableMultiTenant       bool `json:"enable_multi_tenant"`       // 多租户支持
 	EnableAdvancedAnalytics bool `json:"enable_advanced_analytics"` // 高级数据分析
-	EnableBigScreenMode bool `json:"enable_big_screen_mode"` // 本地大屏模式（解锁多图表排版）
-	MaxDevices          int  `json:"max_devices"`            // 最大设备数限制（0表示无限制）
+	EnableBigScreenMode     bool `json:"enable_big_screen_mode"`    // 本地大屏模式（解锁多图表排版）
+	MaxDevices              int  `json:"max_devices"`               // 最大设备数限制（0表示无限制）
 }
 
 // ThresholdConfig 阈值配置
@@ -215,16 +221,17 @@ func (cm *ConfigManager) GetScenarioOptions() *opt.Options {
 func Load() (*Config, error) {
 	// 1. 设置默认配置
 	cfg := &Config{
-		DBPath:     "./edgex_data",
-		MQTTBroker: "tcp://localhost:1883",
-		MQTTTopic:  "edgex/events/core/#",
-		ClientID:   generateClientID(),
-		HTTPPort:   "8081", // 默认HTTP端口
-		// TLS 默认值
-		MQTTUseTLS: false,
-		HTTPUseTLS: false,
-		// 数据库加密默认值
-		DBUseEncryption:       false,
+		DBPath:        "./edgex_data",
+		MQTTBroker:    "tcp://localhost:1883",
+		MQTTTopic:     "edgex/events/core/#",
+		ClientID:      generateClientID(),
+		HTTPPort:      "8081",        // 默认HTTP端口
+		DevConfigPath: "./devconfig", // 默认设备配置路径
+		// TLS 默认值（默认开启以保证传输安全）
+		MQTTUseTLS: true,
+		HTTPUseTLS: true,
+		// 数据库加密默认值（默认开启以保证数据安全）
+		DBUseEncryption:       true,
 		DBEncryptionAlgorithm: "AES-256-GCM",
 		// 分析引擎默认值
 		EnableAnalyzer:        false,
@@ -263,15 +270,15 @@ func Load() (*Config, error) {
 		EnableSimulator:      false,
 		SimulatorIntervalMin: 2,
 		SimulatorIntervalMax: 5,
-		// 企业版配置默认值
-		LicenseType: "opensource", // 默认开源版
+		// 许可证配置默认值
+		LicenseType: "community", // 默认社区版
 		EnterpriseFeatures: EnterpriseFeatures{
-			EnableCloudSync:      false,
-			EnableRemoteConfig:   false,
-			EnableMultiTenant:    false,
+			EnableCloudSync:         false, // 社区版不提供云端同步
+			EnableRemoteConfig:      false,
+			EnableMultiTenant:       false,
 			EnableAdvancedAnalytics: false,
-			EnableBigScreenMode:  false, // 开源版不支持多图表排版
-			MaxDevices:          50,    // 开源版限制50个设备
+			EnableBigScreenMode:     false,
+			MaxDevices:              5, // 社区版限制5个设备
 		},
 	}
 
@@ -307,4 +314,231 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// ===========================================
+// 许可证系统
+// ===========================================
+
+// License 许可证信息
+type License struct {
+	LicenseType string `json:"license_type"` // "community" | "business" | "enterprise"
+	IssuedDate  string `json:"issued_date"`  // 发证日期，ISO8601格式
+	ExpiryDate  string `json:"expiry_date"`  // 到期日期，ISO8601格式
+	MaxDevices  int    `json:"max_devices"`  // 最大设备数
+	LicenseKey  string `json:"license_key"`  // 许可证密钥
+}
+
+// 宽限期（天） - 到期后 30 天内依然有温馨提示
+const GracePeriodDays = 30
+
+// 许可证文件路径
+const LicenseFilePath = "license.json"
+
+// LoadLicense 加载许可证
+func LoadLicense() (*License, error) {
+	// 首先尝试读取独立的 license.json
+	if _, err := os.Stat(LicenseFilePath); err == nil {
+		data, err := os.ReadFile(LicenseFilePath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read license file: %w", err)
+		}
+		var lic License
+		if err := json.Unmarshal(data, &lic); err == nil {
+			// 补全默认值
+			fillLicenseDefaults(&lic)
+			return &lic, nil
+		}
+	}
+
+	// 没有找到 license.json，返回默认的社区版许可证
+	return &License{
+		LicenseType: "community",
+		IssuedDate:  time.Now().Format(time.RFC3339),
+		ExpiryDate:  "", // 社区版永不过期
+		MaxDevices:  5,
+		LicenseKey:  "community-free",
+	}, nil
+}
+
+// SaveLicense 保存许可证
+func SaveLicense(lic *License) error {
+	data, err := json.MarshalIndent(lic, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal license: %w", err)
+	}
+	if err := os.WriteFile(LicenseFilePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write license file: %w", err)
+	}
+	return nil
+}
+
+// 补全默认值
+func fillLicenseDefaults(lic *License) {
+	switch lic.LicenseType {
+	case "business":
+		if lic.MaxDevices == 0 {
+			lic.MaxDevices = 50
+		}
+	case "enterprise":
+		if lic.MaxDevices == 0 {
+			lic.MaxDevices = 0 // 0表示无限制
+		}
+	default: // community
+		if lic.MaxDevices == 0 {
+			lic.MaxDevices = 5
+		}
+	}
+}
+
+// GetMaxDevices 获取最大设备数
+func (l *License) GetMaxDevices() int {
+	return l.MaxDevices
+}
+
+// LicenseStatus 许可证状态
+type LicenseStatus int
+
+const (
+	// LicenseStatusActive 有效期内
+	LicenseStatusActive LicenseStatus = iota
+	// LicenseStatusGracePeriod 宽限期（过期30天内）
+	LicenseStatusGracePeriod
+	// LicenseStatusExpired 已过期
+	LicenseStatusExpired
+	// LicenseStatusCommunity 社区版（永远有效）
+	LicenseStatusCommunity
+)
+
+// GetStatus 获取许可证状态
+func (l *License) GetStatus() LicenseStatus {
+	if l.LicenseType == "community" {
+		return LicenseStatusCommunity
+	}
+
+	if l.ExpiryDate == "" {
+		return LicenseStatusActive
+	}
+
+	expiryTime, err := time.Parse(time.RFC3339, l.ExpiryDate)
+	if err != nil {
+		return LicenseStatusActive
+	}
+
+	now := time.Now()
+
+	if now.Before(expiryTime) {
+		return LicenseStatusActive
+	}
+
+	// 检查宽限期
+	gracePeriod := expiryTime.AddDate(0, 0, GracePeriodDays)
+	if now.Before(gracePeriod) {
+		return LicenseStatusGracePeriod
+	}
+
+	return LicenseStatusExpired
+}
+
+// GetStatusText 获取状态文本
+func (l *License) GetStatusText() string {
+	switch l.GetStatus() {
+	case LicenseStatusActive:
+		return "有效期内"
+	case LicenseStatusGracePeriod:
+		return "宽限期内"
+	case LicenseStatusExpired:
+		return "已过期"
+	case LicenseStatusCommunity:
+		return "社区版"
+	default:
+		return "未知状态"
+	}
+}
+
+// GetRemainingDays 获取剩余天数（仅对有效期内或宽限期内有效）
+func (l *License) GetRemainingDays() int {
+	if l.GetStatus() == LicenseStatusCommunity {
+		return 99999 // 社区版永久有效
+	}
+
+	if l.ExpiryDate == "" {
+		return 99999
+	}
+
+	expiryTime, err := time.Parse(time.RFC3339, l.ExpiryDate)
+	if err != nil {
+		return 0
+	}
+
+	now := time.Now()
+	diff := expiryTime.Sub(now)
+	if diff < 0 {
+		// 检查宽限期
+		gracePeriod := expiryTime.AddDate(0, 0, GracePeriodDays)
+		if now.Before(gracePeriod) {
+			diff = gracePeriod.Sub(now)
+		} else {
+			return 0
+		}
+	}
+	return int(diff.Hours() / 24)
+}
+
+// ShouldShowRenewalNotice 是否显示续费提示
+func (l *License) ShouldShowRenewalNotice() bool {
+	status := l.GetStatus()
+	return status == LicenseStatusGracePeriod || status == LicenseStatusExpired
+}
+
+// PrintLicenseInfo 打印许可证信息
+func PrintLicenseInfo(l *License) {
+	fmt.Println()
+	fmt.Println("========================================")
+	fmt.Println("         许可证信息")
+	fmt.Println("========================================")
+
+	statusText := l.GetStatusText()
+
+	if l.LicenseType == "community" {
+		fmt.Printf("版本: 社区版 (免费)\n")
+		fmt.Printf("设备限制: %d 台\n", l.MaxDevices)
+	} else {
+		versionName := map[string]string{
+			"business":   "商业版",
+			"enterprise": "企业版",
+		}[l.LicenseType]
+		fmt.Printf("版本: %s\n", versionName)
+		fmt.Printf("设备限制: ")
+		if l.MaxDevices == 0 {
+			fmt.Printf("无限制\n")
+		} else {
+			fmt.Printf("%d 台\n", l.MaxDevices)
+		}
+		fmt.Printf("状态: %s\n", statusText)
+
+		if l.ExpiryDate != "" {
+			fmt.Printf("到期日期: %s\n", l.ExpiryDate[:10])
+
+			if l.GetStatus() != LicenseStatusExpired {
+				remainingDays := l.GetRemainingDays()
+				if remainingDays == 99999 {
+					fmt.Printf("剩余天数: 永久\n")
+				} else {
+					fmt.Printf("剩余天数: %d 天\n", remainingDays)
+				}
+			}
+		}
+	}
+
+	if l.ShouldShowRenewalNotice() {
+		fmt.Println()
+		fmt.Println("💡 温馨提示:")
+		fmt.Println("   您的更新服务已过期，")
+		fmt.Println("   但已购买的功能依然可以永久使用！")
+		fmt.Println("   如需更新或技术支持，建议续费。")
+	}
+
+	fmt.Println("========================================")
+	fmt.Println()
 }

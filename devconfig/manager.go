@@ -11,11 +11,17 @@ import (
 )
 
 type Device struct {
-	Name     string
-	IP       string
-	Protocol string
-	Template string
-	Interval string
+	Name              string
+	IP                string
+	Protocol          string
+	Template          string
+	Interval          string
+	SubscriptionTopic string
+	// 过滤相关字段
+	OnChange       bool
+	ValueThreshold float64
+	ValueOperator  string
+	MinInterval    string
 }
 
 type DeviceV2 struct {
@@ -27,6 +33,13 @@ type DeviceV2 struct {
 	Template string   `yaml:"template"`
 	Interval string   `yaml:"interval,omitempty"`
 	Tags     []string `yaml:"tags,omitempty"`
+	// 订阅相关字段
+	SubscriptionTopic string `yaml:"subscriptionTopic,omitempty"` // EdgeX订阅主题
+	// 过滤相关字段
+	OnChange       bool    `yaml:"onChange,omitempty"`       // 仅当数值变化时存储
+	ValueThreshold float64 `yaml:"valueThreshold,omitempty"` // 数值阈值
+	ValueOperator  string  `yaml:"valueOperator,omitempty"`  // 比较操作符: >, <, >=, <=, ==, !=
+	MinInterval    string  `yaml:"minInterval,omitempty"`    // 最小存储间隔
 }
 
 type DevicesConfig struct {
@@ -150,11 +163,17 @@ func (cm *ConfigManager) loadDevicesFromYaml() ([]Device, error) {
 		}
 
 		device := Device{
-			Name:     d.Name,
-			IP:       d.Address,
-			Protocol: d.Protocol,
-			Template: d.Template,
-			Interval: interval,
+			Name:              d.Name,
+			IP:                d.Address,
+			Protocol:          d.Protocol,
+			Template:          d.Template,
+			Interval:          interval,
+			SubscriptionTopic: d.SubscriptionTopic,
+			// 过滤相关字段
+			OnChange:       d.OnChange,
+			ValueThreshold: d.ValueThreshold,
+			ValueOperator:  d.ValueOperator,
+			MinInterval:    d.MinInterval,
 		}
 
 		if device.Name == "" || device.IP == "" {
@@ -229,11 +248,17 @@ func (cm *ConfigManager) saveDevicesToYaml(devices []Device) error {
 		}
 
 		deviceV2 := DeviceV2{
-			Name:     d.Name,
-			Protocol: d.Protocol,
-			Address:  d.IP,
-			Template: d.Template,
-			Interval: d.Interval,
+			Name:              d.Name,
+			Protocol:          d.Protocol,
+			Address:           d.IP,
+			Template:          d.Template,
+			Interval:          d.Interval,
+			SubscriptionTopic: d.SubscriptionTopic,
+			// 过滤相关字段
+			OnChange:       d.OnChange,
+			ValueThreshold: d.ValueThreshold,
+			ValueOperator:  d.ValueOperator,
+			MinInterval:    d.MinInterval,
 		}
 
 		config.Devices = append(config.Devices, deviceV2)

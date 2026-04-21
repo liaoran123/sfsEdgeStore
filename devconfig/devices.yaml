@@ -6,6 +6,7 @@ devices:
     unitId: 1
     template: "modbus/temperature.yaml"
     interval: "1s"
+    subscriptionTopic: "edgex/events/temperature"
     tags:
       - "production"
       - "zone-a"
@@ -16,6 +17,7 @@ devices:
     unitId: 1
     template: "modbus/temperature.yaml"
     interval: "1s"
+    subscriptionTopic: "edgex/events/temperature"
     tags:
       - "production"
       - "zone-b"
@@ -26,6 +28,7 @@ devices:
     unitId: 1
     template: "modbus/pressure.yaml"
     interval: "2s"
+    subscriptionTopic: "edgex/events/pressure"
     tags:
       - "production"
       - "zone-a"

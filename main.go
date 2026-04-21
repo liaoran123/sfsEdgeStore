@@ -2,6 +2,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"sfsEdgeStore/alert"
 	"sfsEdgeStore/analyzer"
 	"sfsEdgeStore/auth"
+	"sfsEdgeStore/cloudsync/sync"
 	"sfsEdgeStore/config"
 	"sfsEdgeStore/core/database"
 	"sfsEdgeStore/core/mqtt"
@@ -22,6 +24,7 @@ import (
 	"sfsEdgeStore/retention"
 	"sfsEdgeStore/server"
 	"sfsEdgeStore/simulator"
+	"sfsEdgeStore/watchdog"
 )
 
 var appConfig *config.Config
@@ -33,13 +36,77 @@ var retentionManager *retention.RetentionManager
 var alertNotifier *alert.Notifier
 var resourceMonitor *resource.ResourceMonitor
 var simulatorInstance *simulator.Simulator
+var syncManager *sync.SyncManager
+var watchdogInstance *watchdog.Watchdog
+var appLicense *config.License
+
+func printWelcome() {
+	fmt.Println(`
+╔═══════════════════════════════════════════════════════════════╗
+║                    sfsEdgeStore 启动成功                       ║
+╠═══════════════════════════════════════════════════════════════╣
+║  轻量级工业物联网边缘数据存储适配器                             ║
+║  内存占用: <50MB | 极轻量 | 高可靠                              ║
+╠═══════════════════════════════════════════════════════════════╣
+║  Web 监控界面: http://localhost:8081                          ║
+║  停止方法: Ctrl+C                                              ║
+╚═══════════════════════════════════════════════════════════════╝
+`)
+}
 
 func main() {
+	// 定义命令行参数
+	mqttBroker := flag.String("broker", "", "MQTT Broker地址 (例如: tcp://localhost:1883)")
+	mqttTopic := flag.String("topic", "", "MQTT订阅主题 (例如: edgex/events/core/#)")
+	httpPort := flag.String("port", "", "HTTP服务端口 (例如: 8081)")
+	help := flag.Bool("help", false, "显示帮助信息")
+	flag.Parse()
+
+	// 显示帮助信息
+	if *help {
+		fmt.Println("sfsEdgeStore - 轻量级工业物联网边缘数据存储适配器")
+		fmt.Println("\n用法: sfsedgestore [选项]")
+		fmt.Println("\n选项:")
+		fmt.Println("  -broker <地址>   MQTT Broker地址 (例如: tcp://localhost:1883)")
+		fmt.Println("  -topic <主题>    MQTT订阅主题 (例如: edgex/events/core/#)")
+		fmt.Println("  -port <端口>     HTTP服务端口 (例如: 8081)")
+		fmt.Println("  -help            显示帮助信息")
+		fmt.Println("\n示例:")
+		fmt.Println("  sfsedgestore")
+		fmt.Println("  sfsedgestore -broker tcp://192.168.1.100:1883 -port 8082")
+		return
+	}
+
 	// 加载配置
 	var err error
 	appConfig, err = config.Load()
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		log.Printf("没有找到 config.json，使用默认配置")
+	}
+
+	// 加载许可证
+	appLicense, err = config.LoadLicense()
+	if err != nil {
+		log.Printf("加载许可证失败: %v，使用默认社区版", err)
+		appLicense = &config.License{
+			LicenseType: "community",
+			MaxDevices:  5,
+		}
+	}
+
+	// 更新配置中的许可证信息
+	appConfig.LicenseType = appLicense.LicenseType
+	appConfig.EnterpriseFeatures.MaxDevices = appLicense.GetMaxDevices()
+
+	// 命令行参数覆盖配置
+	if *mqttBroker != "" {
+		appConfig.MQTTBroker = *mqttBroker
+	}
+	if *mqttTopic != "" {
+		appConfig.MQTTTopic = *mqttTopic
+	}
+	if *httpPort != "" {
+		appConfig.HTTPPort = *httpPort
 	}
 
 	// 初始化监控
@@ -51,6 +118,10 @@ func main() {
 	if err := alertNotifier.Start(); err != nil {
 		log.Printf("Failed to start alert notifier: %v", err)
 	}
+
+	// 初始化并启动看门狗
+	watchdogInstance = watchdog.NewWatchdog(monitorInstance)
+	watchdogInstance.Start()
 
 	// 初始化分析引擎
 	analyzerInstance = analyzer.NewAnalyzer(appConfig)
@@ -90,6 +161,16 @@ func main() {
 		log.Println("Simulator enabled, skipping MQTT connection")
 	}
 
+	// 打印欢迎信息
+	printWelcome()
+
+	// 显示许可证信息
+	config.PrintLicenseInfo(appLicense)
+
+	// 显示当前配置摘要
+	log.Printf("MQTT Broker: %s", appConfig.MQTTBroker)
+	log.Printf("MQTT Topic: %s", appConfig.MQTTTopic)
+	log.Printf("HTTP端口: %s", appConfig.HTTPPort)
 	log.Println("sfsDb EdgeX adapter started successfully")
 
 	// 启动队列处理 goroutine，处理可能存在添加失败等异常数据
@@ -145,6 +226,16 @@ func main() {
 			}
 		}
 	*/
+	// 初始化并启动同步管理器（企业版功能）
+	if appConfig.LicenseType == "enterprise" && appConfig.EnableDataSync {
+		syncManager = sync.NewSyncManager(appConfig, monitorInstance)
+		if err := syncManager.Start(); err != nil {
+			log.Printf("Failed to start sync manager: %v", err)
+		} else {
+			log.Println("Sync manager started (enterprise feature)")
+		}
+	}
+
 	// 启动 HTTP 服务器，提供查询接口
 	serverInstance := server.NewServer(database.Table, appConfig, monitorInstance, retentionManager, alertNotifier, resourceMonitor)
 	if err := serverInstance.Start(); err != nil {
@@ -175,6 +266,16 @@ func main() {
 	// 停止资源监控器
 	if resourceMonitor != nil {
 		resourceMonitor.Stop()
+	}
+
+	// 停止同步管理器（企业版功能）
+	if syncManager != nil {
+		syncManager.Stop()
+	}
+
+	// 停止看门狗
+	if watchdogInstance != nil {
+		watchdogInstance.Stop()
 	}
 	/*
 		// 停止模拟器

@@ -4,13 +4,11 @@ let realtimeData = [];
 let historicalData = [];
 let selectedDevice = '';
 let selectedReading = '';
-let isEnterprise = false;
 let updateInterval = 5000; // 5秒刷新一次
 
 // 初始化
 document.addEventListener('DOMContentLoaded', function() {
     initChart();
-    fetchLicenseInfo();
     fetchData();
     fetchMetrics();
     setInterval(fetchData, updateInterval);
@@ -72,19 +70,6 @@ function initChart() {
         }]
     };
     trendChart.setOption(option);
-}
-
-// 获取许可证信息
-async function fetchLicenseInfo() {
-    try {
-        const res = await fetch('/api/license');
-        const data = await res.json();
-        isEnterprise = data.license_type === 'enterprise';
-        document.getElementById('licenseBadge').textContent = isEnterprise ? '企业版' : '开源版';
-        document.getElementById('licenseBadge').className = 'license-badge ' + (isEnterprise ? 'license-enterprise' : 'license-opensource');
-    } catch (e) {
-        console.error('获取许可证信息失败:', e);
-    }
 }
 
 // 获取实时数据

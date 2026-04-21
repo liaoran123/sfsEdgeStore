@@ -25,15 +25,16 @@ import (
 
 // Client MQTT客户端结构体
 type Client struct {
-	client        mqtt.Client
-	config        *config.Config
-	dataQueue     *queue.Queue
-	monitor       *monitor.Monitor
-	analyzer      *analyzer.Analyzer
-	batchMessages []map[string]interface{}
-	batchSize     int
-	batchInterval time.Duration
-	lastBatchTime time.Time
+	client            mqtt.Client
+	config            *config.Config
+	dataQueue         *queue.Queue
+	monitor           *monitor.Monitor
+	analyzer          *analyzer.Analyzer
+	batchMessages     []map[string]interface{}
+	batchSize         int
+	batchInterval     time.Duration
+	lastBatchTime     time.Time
+	registeredDevices map[string]bool // 已注册设备集合
 }
 
 // NewClient 创建新的MQTT客户端
@@ -41,19 +42,28 @@ func NewClient(cfg *config.Config, dataQueue *queue.Queue, monitor *monitor.Moni
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(cfg.MQTTBroker) // 连接到EdgeX的MQTT broker
 	opts.SetClientID(cfg.ClientID)
-	opts.SetCleanSession(false)                   // 启用持久会话
+	opts.SetCleanSession(true)                    // 启用清理会话
 	opts.SetAutoReconnect(true)                   // 启用自动重连
 	opts.SetMaxReconnectInterval(time.Minute * 5) // 最大重连间隔5分钟
+	opts.SetResumeSubs(true)                      // 连接恢复后自动重新订阅
 
-	// 设置遗嘱消息
-	willTopic := cfg.MQTTTopic + "/status"
+	// 设置遗嘱消息（不要在遗嘱主题中使用通配符 #）
+	willTopic := "edgex/events/status"
 	willMessage := map[string]interface{}{
 		"status":    "offline",
 		"clientId":  cfg.ClientID,
 		"timestamp": time.Now().UnixNano(),
 	}
 	willPayload, _ := json.Marshal(willMessage)
-	opts.SetWill(willTopic, string(willPayload), 1, false)
+	opts.SetWill(willTopic, string(willPayload), 0, false)
+
+	// 添加用户名/密码认证
+	if cfg.MQTTUsername != "" {
+		opts.SetUsername(cfg.MQTTUsername)
+		if cfg.MQTTPassword != "" {
+			opts.SetPassword(cfg.MQTTPassword)
+		}
+	}
 
 	// 添加 TLS 支持
 	if cfg.MQTTUseTLS {
@@ -82,21 +92,22 @@ func NewClient(cfg *config.Config, dataQueue *queue.Queue, monitor *monitor.Moni
 	}
 
 	client := &Client{
-		config:        cfg,
-		dataQueue:     dataQueue,
-		monitor:       monitor,
-		analyzer:      analyzer,
-		batchMessages: make([]map[string]interface{}, 0),
-		batchSize:     100,             // 默认批量大小
-		batchInterval: 5 * time.Second, // 默认批量间隔
-		lastBatchTime: time.Now(),
+		config:            cfg,
+		dataQueue:         dataQueue,
+		monitor:           monitor,
+		analyzer:          analyzer,
+		batchMessages:     make([]map[string]interface{}, 0),
+		batchSize:         100,             // 默认批量大小
+		batchInterval:     5 * time.Second, // 默认批量间隔
+		lastBatchTime:     time.Now(),
+		registeredDevices: make(map[string]bool),
 	}
 
 	// 设置连接处理函数
 	opts.SetOnConnectHandler(func(mqttClient mqtt.Client) {
 		log.Println("MQTT broker connected")
 		// 发布在线状态消息
-		onlineTopic := cfg.MQTTTopic + "/status"
+		onlineTopic := "edgex/events/status"
 		onlineMessage := map[string]interface{}{
 			"status":    "online",
 			"clientId":  cfg.ClientID,
@@ -234,6 +245,45 @@ func (c *Client) AddToBatch(message map[string]interface{}) {
 	}
 }
 
+// isDeviceAllowed 检查设备是否被允许发送数据
+// 社区版: 5台设备, 商业版: 50台设备, 企业版: 无限制
+func (c *Client) isDeviceAllowed(deviceName string) bool {
+	// 企业版用户无设备数量限制
+	if c.config.LicenseType == "enterprise" {
+		return true
+	}
+
+	// 已注册的设备始终允许
+	if c.registeredDevices[deviceName] {
+		return true
+	}
+
+	// 获取设备数限制
+	maxDevices := 5 // 社区版默认5台
+	if c.config.LicenseType == "business" {
+		maxDevices = 50 // 商业版50台
+	}
+	// 从配置中读取（如果有配置）
+	if c.config.EnterpriseFeatures.MaxDevices > 0 {
+		maxDevices = c.config.EnterpriseFeatures.MaxDevices
+	}
+
+	// 检查当前设备数量是否已达上限
+	if len(c.registeredDevices) >= maxDevices {
+		return false
+	}
+
+	// 注册新设备
+	c.registeredDevices[deviceName] = true
+	log.Printf("New device registered: %s (total: %d/%d, license: %s)", deviceName, len(c.registeredDevices), maxDevices, c.config.LicenseType)
+	return true
+}
+
+// GetRegisteredDeviceCount 返回已注册设备数量
+func (c *Client) GetRegisteredDeviceCount() int {
+	return len(c.registeredDevices)
+}
+
 // messageHandler 适配器处理收到的EdgeX消息
 func (c *Client) messageHandler() mqtt.MessageHandler {
 	return func(client mqtt.Client, msg mqtt.Message) {
@@ -255,6 +305,15 @@ func (c *Client) messageHandler() mqtt.MessageHandler {
 
 			// 如果消息类型不是event，event会为nil
 			if event == nil {
+				return
+			}
+
+			// 检查设备数量限制（仅对免费用户生效）
+			if !c.isDeviceAllowed(event.DeviceName) {
+				log.Printf("Device limit reached, rejecting data from device: %s", event.DeviceName)
+				if c.monitor != nil {
+					c.monitor.RecordError("device_limit_reached", fmt.Sprintf("Device %s rejected due to limit", event.DeviceName))
+				}
 				return
 			}
 

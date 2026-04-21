@@ -1,0 +1,45 @@
+# sfsEdgeStore Industrial IoT Agent Systemd Service
+# 这是第一层防御体系：进程级守护
+
+[Unit]
+Description=sfsEdgeStore Industrial IoT Agent
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+
+# 核心配置：总是重启
+Restart=always
+# 崩溃后等待 3 秒重启
+RestartSec=3
+
+# 执行命令
+ExecStart=/usr/local/bin/sfsedgestore --config /etc/sfs/config.yaml
+
+# 环境变量
+Environment=GO_ENV=production
+Environment=SFS_LOG_LEVEL=info
+
+# 资源限制
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# 日志配置
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=sfsedgestore
+
+[Install]
+WantedBy=multi-user.target
+
+# 如何使用：
+# 1. 将此文件复制到 /etc/systemd/system/sfsedgestore.service
+# 2. 执行：sudo systemctl daemon-reload
+# 3. 执行：sudo systemctl enable sfsedgestore
+# 4. 执行：sudo systemctl start sfsedgestore
+# 5. 查看状态：sudo systemctl status sfsedgestore
+# 6. 查看日志：sudo journalctl -u sfsedgestore
+
+# 效果：只要系统活着，你的软件就必须活着。这是"自愈"的底线。

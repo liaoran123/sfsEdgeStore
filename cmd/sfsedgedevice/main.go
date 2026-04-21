@@ -233,6 +233,9 @@ func handleProvisionAdd(args []string, p *provision.Provisioner, cm *devconfig.C
 	protocol := fs.String("protocol", "modbus-tcp", "Device protocol (modbus-tcp, modbus-rtu, mqtt)")
 	template := fs.String("template", "modbus/temperature", "Device template")
 	interval := fs.String("interval", "15s", "AutoEvent interval (e.g., 1s, 5s, 1m)")
+	onChange := fs.Bool("onChange", false, "Trigger only on value change")
+	minInterval := fs.String("minInterval", "", "Minimum trigger interval")
+	subscriptionTopic := fs.String("subscriptionTopic", "", "MQTT subscription topic")
 
 	if err := fs.Parse(args); err != nil {
 		fmt.Printf("Invalid arguments: %v\n", err)
@@ -251,7 +254,7 @@ func handleProvisionAdd(args []string, p *provision.Provisioner, cm *devconfig.C
 	fmt.Printf("Adding device '%s' at %s (protocol: %s, template: %s, interval: %s)...\n",
 		name, ip, *protocol, *template, *interval)
 
-	if err := p.ProvisionDevice(name, ip, *protocol, *template, *interval); err != nil {
+	if err := p.ProvisionDevice(name, ip, *protocol, *template, *interval, *onChange, *minInterval, *subscriptionTopic); err != nil {
 		fmt.Printf("Failed to provision device: %v\n", err)
 		os.Exit(1)
 	}

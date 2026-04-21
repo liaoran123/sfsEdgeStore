@@ -93,6 +93,7 @@ devices:
 | address | string | Yes | Device address (IP:Port) | 192.168.1.100:502 |
 | unitId | int | No | Modbus Unit ID (default: 1) | 1 |
 | topic | string | No | MQTT topic (for MQTT protocol) | factory/hvac/status |
+| subscriptionTopic | string | No | EdgeX subscription topic | edgex/events/temperature |
 | template | string | Yes | Template path (relative to templates/) | modbus/temperature.yaml |
 | interval | string | No | Collection interval (default: 15s) | 1s, 5s, 1m |
 | tags | []string | No | Device tags for organization | ["production", "zone-a"] |
