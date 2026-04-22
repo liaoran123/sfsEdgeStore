@@ -16,6 +16,7 @@ import (
 	"sfsEdgeStore/auth"
 	"sfsEdgeStore/cloudsync/sync"
 	"sfsEdgeStore/config"
+	"sfsEdgeStore/configwizard"
 	"sfsEdgeStore/core/database"
 	"sfsEdgeStore/core/mqtt"
 	"sfsEdgeStore/monitor"
@@ -82,6 +83,13 @@ func main() {
 	appConfig, err = config.Load()
 	if err != nil {
 		log.Printf("没有找到 config.json，使用默认配置")
+	}
+
+	// 运行配置向导
+	wizard := configwizard.NewWizard(appConfig)
+	if err := wizard.Run(); err != nil {
+		log.Printf("Configuration wizard failed: %v", err)
+		// 继续运行，不阻止启动
 	}
 
 	// 加载许可证

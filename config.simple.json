@@ -2,5 +2,5 @@
   "mqtt_broker": "tcp://localhost:1883",
   "mqtt_topic": "edgex/events/core/#",
   "http_port": "8081",
-  "license_type": "community"
+  "db_use_encryption": false
 }

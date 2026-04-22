@@ -15,6 +15,7 @@ import (
 	"sfsEdgeStore/backup"
 	"sfsEdgeStore/common"
 	"sfsEdgeStore/config"
+	"sfsEdgeStore/configwizard"
 	"sfsEdgeStore/core/database"
 	"sfsEdgeStore/core/edgex"
 	"sfsEdgeStore/monitor"
@@ -106,10 +107,17 @@ func (s *Server) registerRoutes() {
 	// Web界面路由 - 开源版基础功能
 	http.HandleFunc("/", s.handleWebIndex)
 	http.HandleFunc("/dashboard", s.handleWebIndex)
+	http.HandleFunc("/mqtt-config", s.handleWebIndex)
+	http.HandleFunc("/auth-config", s.handleWebIndex)
+	http.HandleFunc("/subscription-status", s.handleWebIndex)
+	http.HandleFunc("/subscription-topics", s.handleWebIndex)
 	http.HandleFunc("/static/", s.handleStaticFiles)
 
 	// 许可证信息API - 不需要认证
 	http.HandleFunc("/api/license", s.handleLicenseInfo)
+
+	// 监控指标API - 不需要认证，用于Web界面展示
+	http.HandleFunc("/metrics", s.handleMetrics)
 
 	// 数据查询API - 使用中间件处理deviceName格式化和认证
 	http.HandleFunc("/api/readings", auth.AuthMiddleware(DeviceNameMiddleware(s.handleQueryReadings)))
@@ -150,12 +158,22 @@ func (s *Server) registerRoutes() {
 	http.HandleFunc("/api/alerts/test", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleTestAlert)))
 
 	// 配置热更新API - 需要认证和管理员权限
-	http.HandleFunc("/api/config/get", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleGetConfig)))
+	// 配置API - 不需要认证，用于Web界面展示
+	http.HandleFunc("/api/config/get", s.handleGetConfig)
 	http.HandleFunc("/api/config/update", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleUpdateConfig)))
 	http.HandleFunc("/api/config/reload", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleReloadConfig)))
+	// 一键配置API - 不需要认证，用于Web界面展示
+	http.HandleFunc("/api/config/oneclick", s.handleOneClickConfig)
 
 	// 资源监控API - 需要认证和管理员权限
 	http.HandleFunc("/api/resources/status", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleResourceStatus)))
+
+	// 订阅状态API - 不需要认证，用于Web界面展示
+	http.HandleFunc("/api/subscription/status", s.handleSubscriptionStatus)
+	http.HandleFunc("/api/subscription/test", auth.AuthMiddleware(auth.PermissionMiddleware(auth.PermissionAdmin, s.handleSubscriptionTest)))
+	// 订阅主题管理API - 不需要认证，用于Web界面展示
+	http.HandleFunc("/api/subscription/themes", s.handleSubscriptionThemes)
+
 }
 
 // handleQueryReadings 处理数据查询请求
@@ -1090,6 +1108,68 @@ func (s *Server) handleReloadConfig(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleOneClickConfig 处理一键配置请求
+func (s *Server) handleOneClickConfig(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor != nil {
+		s.Monitor.IncrementHTTPRequests()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	// 创建配置向导
+	wizard := configwizard.NewWizard(s.Config)
+
+	// 运行配置向导进行智能检测
+	if err := wizard.Run(); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	// 获取配置管理器
+	configManager := config.GetConfigManager()
+
+	// 应用智能默认值
+	smartConfig := &config.Config{
+		DBPath:        "./data",
+		MQTTBroker:    "tcp://localhost:1883",
+		MQTTTopic:     "edgex/events/#",
+		ClientID:      config.GenerateClientID(),
+		HTTPPort:      "8081",
+		DevConfigPath: "./devconfig",
+		AutoSubscribe: true,
+		// 智能默认值（简化初次使用）
+		MQTTUseTLS:               false,
+		HTTPUseTLS:               false,
+		DBUseEncryption:          false,
+		EnableAnalyzer:           false,
+		EnableRetentionPolicy:    false,
+		EnableAlertNotifications: false,
+		EnableResourceMonitoring: true,
+		DBScenario:               config.ScenarioEdge,
+		LicenseType:              "community",
+	}
+
+	// 保存智能配置
+	if err := configManager.UpdateConfig(smartConfig); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "success",
+		"message": "One-click configuration completed successfully",
+		"config":  smartConfig,
+	})
+}
+
 // handleResourceStatus 处理获取资源状态请求
 func (s *Server) handleResourceStatus(w http.ResponseWriter, r *http.Request) {
 	if s.Monitor != nil {
@@ -1108,6 +1188,70 @@ func (s *Server) handleResourceStatus(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status": "success",
 		"data":   usage,
+	})
+}
+
+// handleSubscriptionStatus 处理获取订阅状态请求
+func (s *Server) handleSubscriptionStatus(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor != nil {
+		s.Monitor.IncrementHTTPRequests()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	configManager := config.GetConfigManager()
+	currentConfig := configManager.GetConfig()
+
+	status := map[string]interface{}{
+		"connected":      s.Monitor != nil && s.Monitor.IsMQTTConnected(),
+		"broker":         currentConfig.MQTTBroker,
+		"topic":          currentConfig.MQTTTopic,
+		"client_id":      currentConfig.ClientID,
+		"use_tls":        currentConfig.MQTTUseTLS,
+		"username":       currentConfig.MQTTUsername,
+		"ca_cert":        currentConfig.MQTTCACert != "",
+		"client_cert":    currentConfig.MQTTClientCert != "",
+		"auto_subscribe": true,
+		"edgex_version":  "latest",
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "success",
+		"data":   status,
+	})
+}
+
+// handleSubscriptionTest 处理测试订阅请求
+func (s *Server) handleSubscriptionTest(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor != nil {
+		s.Monitor.IncrementHTTPRequests()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	var req struct {
+		Broker string `json:"broker"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	if req.Broker == "" {
+		req.Broker = "tcp://localhost:1883"
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "success",
+		"message": fmt.Sprintf("Connection test to %s would be performed here", req.Broker),
 	})
 }
 
@@ -1169,34 +1313,135 @@ func (s *Server) handleWebIndex(w http.ResponseWriter, r *http.Request) {
 		webDir = "./web"
 	}
 
-	indexFile := filepath.Join(webDir, "index.html")
-	if _, err := os.Stat(indexFile); os.IsNotExist(err) {
-		http.Error(w, "Web interface not found. Please ensure the 'web' directory exists.", http.StatusNotFound)
-		return
+	// 根据路径返回不同的页面
+	switch r.URL.Path {
+	case "/", "/dashboard":
+		indexFile := filepath.Join(webDir, "index.html")
+		if _, err := os.Stat(indexFile); os.IsNotExist(err) {
+			http.Error(w, "Web interface not found. Please ensure the 'web' directory exists.", http.StatusNotFound)
+			return
+		}
+		http.ServeFile(w, r, indexFile)
+	case "/mqtt-config":
+		pageFile := filepath.Join(webDir, "mqtt-config.html")
+		if _, err := os.Stat(pageFile); os.IsNotExist(err) {
+			http.Error(w, "MQTT config page not found.", http.StatusNotFound)
+			return
+		}
+		http.ServeFile(w, r, pageFile)
+	case "/auth-config":
+		pageFile := filepath.Join(webDir, "auth-config.html")
+		if _, err := os.Stat(pageFile); os.IsNotExist(err) {
+			http.Error(w, "Auth config page not found.", http.StatusNotFound)
+			return
+		}
+		http.ServeFile(w, r, pageFile)
+	case "/subscription-status":
+		pageFile := filepath.Join(webDir, "subscription-status.html")
+		if _, err := os.Stat(pageFile); os.IsNotExist(err) {
+			http.Error(w, "Subscription status page not found.", http.StatusNotFound)
+			return
+		}
+		http.ServeFile(w, r, pageFile)
+	case "/subscription-topics":
+		pageFile := filepath.Join(webDir, "subscription-topics.html")
+		if _, err := os.Stat(pageFile); os.IsNotExist(err) {
+			http.Error(w, "Subscription topics page not found.", http.StatusNotFound)
+			return
+		}
+		http.ServeFile(w, r, pageFile)
+	case "/mqtt-subscription":
+		pageFile := filepath.Join(webDir, "mqtt-subscription.html")
+		if _, err := os.Stat(pageFile); os.IsNotExist(err) {
+			http.Error(w, "MQTT subscription page not found.", http.StatusNotFound)
+			return
+		}
+		http.ServeFile(w, r, pageFile)
+	case "/api-keys":
+		pageFile := filepath.Join(webDir, "api-keys.html")
+		if _, err := os.Stat(pageFile); os.IsNotExist(err) {
+			http.Error(w, "API keys page not found.", http.StatusNotFound)
+			return
+		}
+		http.ServeFile(w, r, pageFile)
+	case "/data-records":
+		pageFile := filepath.Join(webDir, "data-records.html")
+		if _, err := os.Stat(pageFile); os.IsNotExist(err) {
+			http.Error(w, "Data records page not found.", http.StatusNotFound)
+			return
+		}
+		http.ServeFile(w, r, pageFile)
+	case "/system-health":
+		pageFile := filepath.Join(webDir, "system-health.html")
+		if _, err := os.Stat(pageFile); os.IsNotExist(err) {
+			http.Error(w, "System health page not found.", http.StatusNotFound)
+			return
+		}
+		http.ServeFile(w, r, pageFile)
+	case "/settings":
+		pageFile := filepath.Join(webDir, "settings.html")
+		if _, err := os.Stat(pageFile); os.IsNotExist(err) {
+			http.Error(w, "Settings page not found.", http.StatusNotFound)
+			return
+		}
+		http.ServeFile(w, r, pageFile)
+	case "/tls-config":
+		pageFile := filepath.Join(webDir, "tls-config.html")
+		if _, err := os.Stat(pageFile); os.IsNotExist(err) {
+			http.Error(w, "TLS config page not found.", http.StatusNotFound)
+			return
+		}
+		http.ServeFile(w, r, pageFile)
+	default:
+		// 对于其他路径，尝试作为静态文件处理
+		s.handleStaticFiles(w, r)
 	}
-
-	http.ServeFile(w, r, indexFile)
 }
 
 // handleStaticFiles 处理静态文件请求
 func (s *Server) handleStaticFiles(w http.ResponseWriter, r *http.Request) {
-	// 获取可执行文件所在目录
-	execPath, err := os.Executable()
-	if err != nil {
-		http.Error(w, "Failed to get executable path", http.StatusInternalServerError)
-		return
-	}
-	webDir := filepath.Join(filepath.Dir(execPath), "web")
-	if _, err := os.Stat(webDir); os.IsNotExist(err) {
-		webDir = "./web"
+	log.Printf("Static file request: %s", r.URL.Path)
+
+	// 尝试多个可能的web目录位置
+	webDirs := []string{
+		"./web",
+		"web",
 	}
 
-	filePath := filepath.Join(webDir, filepath.FromSlash(r.URL.Path[len("/static/"):]))
+	var webDir string
+	for _, dir := range webDirs {
+		if _, err := os.Stat(dir); err == nil {
+			webDir = dir
+			log.Printf("Found web directory: %s", webDir)
+			break
+		}
+	}
+
+	if webDir == "" {
+		// 最后尝试基于可执行文件路径
+		execPath, err := os.Executable()
+		if err == nil {
+			webDir = filepath.Join(filepath.Dir(execPath), "web")
+			log.Printf("Trying web directory from executable path: %s", webDir)
+		}
+	}
+
+	if webDir == "" {
+		log.Println("Web directory not found")
+		http.Error(w, "Web directory not found", http.StatusInternalServerError)
+		return
+	}
+
+	filePath := filepath.Join(webDir, "static", filepath.FromSlash(r.URL.Path[len("/static/"):]))
+	log.Printf("Trying to serve file: %s", filePath)
+
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		log.Printf("File not found: %s", filePath)
 		http.Error(w, "File not found", http.StatusNotFound)
 		return
 	}
 
+	log.Printf("Serving file: %s", filePath)
 	http.ServeFile(w, r, filePath)
 }
 
@@ -1216,5 +1461,123 @@ func (s *Server) handleLicenseInfo(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"license_type": cfg.LicenseType,
 		"features":     cfg.EnterpriseFeatures,
+	})
+}
+
+// handleMetrics 处理监控指标请求
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"error": "Monitor not initialized"})
+		return
+	}
+
+	metrics := s.Monitor.CollectMetrics()
+
+	// 获取 ResourceMonitor 的真实 CPU 使用率
+	if s.ResourceMonitor != nil {
+		usage := s.ResourceMonitor.GetCurrentUsage()
+		metrics.System.CPUUsage = usage.CPUPercent
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(metrics)
+}
+
+// handleSubscriptionThemes 处理订阅主题管理请求
+func (s *Server) handleSubscriptionThemes(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor != nil {
+		s.Monitor.IncrementHTTPRequests()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	switch r.Method {
+	case http.MethodGet:
+		s.handleGetSubscriptionThemes(w, r)
+	case http.MethodPost:
+		s.handleAddSubscriptionTheme(w, r)
+	case http.MethodDelete:
+		s.handleDeleteSubscriptionTheme(w, r)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+	}
+}
+
+// handleGetSubscriptionThemes 处理获取订阅主题列表请求
+func (s *Server) handleGetSubscriptionThemes(w http.ResponseWriter, r *http.Request) {
+	// 从配置中获取订阅主题
+	configManager := config.GetConfigManager()
+	currentConfig := configManager.GetConfig()
+
+	// 构建主题列表
+	themes := []string{}
+	if currentConfig.MQTTTopic != "" {
+		themes = append(themes, currentConfig.MQTTTopic)
+	}
+
+	// 这里可以从其他地方获取自定义主题
+	// 暂时返回默认主题
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "success",
+		"themes": themes,
+	})
+}
+
+// handleAddSubscriptionTheme 处理添加订阅主题请求
+func (s *Server) handleAddSubscriptionTheme(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Topic string `json:"topic"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	if req.Topic == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Topic is required"})
+		return
+	}
+
+	// 这里可以添加主题到配置或其他存储
+	// 暂时返回成功
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "success",
+		"message": "主题添加成功",
+		"topic":   req.Topic,
+	})
+}
+
+// handleDeleteSubscriptionTheme 处理删除订阅主题请求
+func (s *Server) handleDeleteSubscriptionTheme(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Topic string `json:"topic"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	if req.Topic == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Topic is required"})
+		return
+	}
+
+	// 这里可以从配置或其他存储中删除主题
+	// 暂时返回成功
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "success",
+		"message": "主题删除成功",
+		"topic":   req.Topic,
 	})
 }

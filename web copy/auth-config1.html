@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>sfsEdgeStore - 认证配置</title>
+    <link href="/static/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <script src="/static/bootstrap/bootstrap.bundle.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #00d9ff;
+            --secondary-color: #16213e;
+            --tertiary-color: #0f3460;
+            --text-color: #eee;
+            --text-muted: #ccc;
+            --text-dark: #666;
+            --danger-color: #ff6b6b;
+            --warning-color: #ffd93d;
+            --success-color: #51cf66;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #1a1a2e;
+            color: var(--text-color);
+            min-height: 100vh;
+        }
+
+        .header {
+            background: var(--secondary-color);
+            padding: 15px 30px;
+            border-bottom: 1px solid var(--tertiary-color);
+        }
+
+        .header h1 {
+            font-size: 24px;
+            color: var(--primary-color);
+        }
+
+        .nav-link {
+            text-decoration: none;
+            padding: 8px 12px;
+            border-radius: 5px;
+            transition: all 0.3s;
+            color: var(--text-color);
+        }
+
+        .nav-link:hover {
+            background: var(--tertiary-color);
+            color: var(--primary-color);
+        }
+
+        .nav-link.active {
+            background: var(--tertiary-color);
+            font-weight: bold;
+        }
+
+        .config-container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+
+        .card {
+            background: var(--secondary-color);
+            border-radius: 10px;
+            border: 1px solid var(--tertiary-color);
+            margin-bottom: 1.5rem;
+        }
+
+        .card-header {
+            background: var(--tertiary-color);
+            padding: 1rem 1.5rem;
+            border-radius: 10px 10px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-title {
+            font-size: 18px;
+            color: var(--primary-color);
+            margin: 0;
+        }
+
+        .card-body {
+            padding: 1.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: var(--tertiary-color);
+            border: 1px solid var(--tertiary-color);
+            border-radius: 5px;
+            color: var(--text-color);
+            font-size: 14px;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .form-control:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .form-hint {
+            font-size: 12px;
+            color: var(--text-dark);
+            margin-top: 0.25rem;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            color: #1a1a2e;
+        }
+
+        .btn-primary:hover {
+            background: #00b8d9;
+        }
+
+        .btn-secondary {
+            background: var(--tertiary-color);
+            color: var(--primary-color);
+        }
+
+        .btn-secondary:hover {
+            background: #1a4a7a;
+        }
+
+        .btn-danger {
+            background: var(--danger-color);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #ff5252;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 5px;
+            margin-bottom: 1rem;
+        }
+
+        .alert-success {
+            background: rgba(81, 207, 102, 0.2);
+            border: 1px solid var(--success-color);
+            color: var(--success-color);
+        }
+
+        .alert-error {
+            background: rgba(255, 107, 107, 0.2);
+            border: 1px solid var(--danger-color);
+            color: var(--danger-color);
+        }
+
+        .alert-warning {
+            background: rgba(255, 217, 61, 0.2);
+            border: 1px solid var(--warning-color);
+            color: var(--warning-color);
+        }
+
+        .info-box {
+            background: var(--tertiary-color);
+            padding: 1rem;
+            border-radius: 5px;
+            margin-bottom: 1rem;
+        }
+
+        .info-box-title {
+            color: var(--primary-color);
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+
+        .info-box-content {
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
+        .key-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .key-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            background: var(--tertiary-color);
+            border-radius: 5px;
+            margin-bottom: 0.5rem;
+        }
+
+        .key-info {
+            flex: 1;
+        }
+
+        .key-user {
+            color: var(--primary-color);
+            font-weight: bold;
+        }
+
+        .key-meta {
+            font-size: 12px;
+            color: var(--text-dark);
+            margin-top: 0.25rem;
+        }
+
+        .key-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .role-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 3px;
+            font-size: 12px;
+            margin-right: 0.5rem;
+        }
+
+        .role-admin {
+            background: var(--danger-color);
+            color: white;
+        }
+
+        .role-operator {
+            background: var(--primary-color);
+            color: #1a1a2e;
+        }
+
+        .role-viewer {
+            background: var(--tertiary-color);
+            color: var(--text-color);
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--primary-color);
+        }
+
+        .password-strength {
+            height: 4px;
+            background: var(--tertiary-color);
+            border-radius: 2px;
+            margin-top: 0.5rem;
+            overflow: hidden;
+        }
+
+        .password-strength-bar {
+            height: 100%;
+            transition: width 0.3s;
+        }
+
+        .strength-weak {
+            background: var(--danger-color);
+            width: 25%;
+        }
+
+        .strength-fair {
+            background: var(--warning-color);
+            width: 50%;
+        }
+
+        .strength-good {
+            background: var(--success-color);
+            width: 75%;
+        }
+
+        .strength-strong {
+            background: var(--primary-color);
+            width: 100%;
+        }
+
+        @media (max-width: 768px) {
+            .button-group {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="d-flex justify-content-between align-items-center">
+            <h1>sfsEdgeStore - 认证配置</h1>
+            <nav class="d-flex gap-3">
+                <a href="/" class="nav-link">仪表盘</a>
+                <a href="/mqtt-config" class="nav-link">MQTT配置</a>
+                <a href="/auth-config" class="nav-link active">认证配置</a>
+                <a href="/subscription-status" class="nav-link">订阅状态</a>
+            </nav>
+        </div>
+    </div>
+
+    <div class="config-container">
+        <div id="alertContainer"></div>
+
+        <div class="info-box">
+            <div class="info-box-title">🔐 安全配置</div>
+            <div class="info-box-content">
+                配置MQTT连接的用户名和密码，以及HTTP API的认证方式。
+            </div>
+        </div>
+
+        <form id="authConfigForm">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">📡 MQTT认证配置</h3>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="form-label">用户名</label>
+                                <input type="text" class="form-control" id="mqttUsername" placeholder="留空表示无认证">
+                                <div class="form-hint">MQTT连接的用户名</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="form-label">密码</label>
+                                <input type="password" class="form-control" id="mqttPassword" placeholder="留空表示无认证">
+                                <div class="form-hint">MQTT连接的密码</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="info-box">
+                        <div class="info-box-title">💡 认证模式说明</div>
+                        <div class="info-box-content">
+                            <ul style="margin: 0; padding-left: 1.2rem;">
+                                <li><strong>无认证：</strong>用户名和密码都留空，Broker允许匿名连接</li>
+                                <li><strong>用户名/密码：</strong>最常见的认证方式</li>
+                                <li><strong>TLS客户端证书：</strong>在MQTT配置页面配置，用于双向认证</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">🔑 API密钥管理</h3>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <span class="text-muted">管理用于访问HTTP API的密钥</span>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="showCreateKeyModal()">+ 创建API密钥</button>
+                    </div>
+                    <div class="key-list" id="keyList">
+                        <div class="text-center text-muted py-4">加载中...</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">🛡️ 安全建议</h3>
+                </div>
+                <div class="card-body">
+                    <div class="info-box">
+                        <div class="info-box-content">
+                            <ul style="margin: 0; padding-left: 1.2rem;">
+                                <li>密码长度至少8个字符，包含字母和数字</li>
+                                <li>定期更换API密钥，不要共享密钥</li>
+                                <li>生产环境建议启用TLS加密</li>
+                                <li>为不同用途创建不同的API密钥</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button type="button" class="btn btn-primary" onclick="saveAuthConfig()">💾 保存配置</button>
+                <button type="button" class="btn btn-secondary" onclick="resetAuthConfig()">🔄 重置</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="modal fade" id="createKeyModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content" style="background: var(--secondary-color); color: var(--text-color);">
+                <div class="modal-header">
+                    <h5 class="modal-title text-primary">创建API密钥</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label">用户ID</label>
+                        <input type="text" class="form-control" id="newKeyUserID" placeholder="输入用户标识">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">角色</label>
+                        <select class="form-control" id="newKeyRole">
+                            <option value="viewer">查看者 (Viewer)</option>
+                            <option value="operator">操作者 (Operator)</option>
+                            <option value="admin">管理员 (Admin)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">过期时间（小时）</label>
+                        <input type="number" class="form-control" id="newKeyExpiry" value="720" placeholder="720">
+                        <div class="form-hint">0表示永不过期</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="createAPIKey()">创建</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentConfig = {};
+        let keyModal = null;
+
+        async function loadConfig() {
+            try {
+                const response = await fetch('/api/config/get');
+                const result = await response.json();
+                if (result.status === 'success' && result.data) {
+                    currentConfig = result.data;
+                    populateForm(currentConfig);
+                }
+            } catch (error) {
+                showAlert('error', '加载配置失败: ' + error.message);
+            }
+        }
+
+        function populateForm(config) {
+            document.getElementById('mqttUsername').value = config.mqtt_username || '';
+            document.getElementById('mqttPassword').value = config.mqtt_password || '';
+        }
+
+        async function loadAPIKeys() {
+            try {
+                const response = await fetch('/api/auth/list-keys', {
+                    headers: { 'X-API-Key': getCurrentAPIKey() }
+                });
+                const result = await response.json();
+                if (result.status === 'success' && result.api_keys) {
+                    renderKeyList(result.api_keys);
+                } else {
+                    document.getElementById('keyList').innerHTML =
+                        '<div class="text-center text-muted py-4">暂无API密钥</div>';
+                }
+            } catch (error) {
+                document.getElementById('keyList').innerHTML =
+                    '<div class="text-center text-muted py-4">加载失败: ' + error.message + '</div>';
+            }
+        }
+
+        function renderKeyList(keys) {
+            if (!keys || keys.length === 0) {
+                document.getElementById('keyList').innerHTML =
+                    '<div class="text-center text-muted py-4">暂无API密钥</div>';
+                return;
+            }
+
+            const html = keys.map(key => `
+                <div class="key-item">
+                    <div class="key-info">
+                        <div class="key-user">
+                            <span class="role-badge role-${key.role}">${key.role}</span>
+                            ${key.user_id}
+                        </div>
+                        <div class="key-meta">
+                            创建于: ${formatDate(key.created_at)} |
+                            ${key.expires_at ? '过期: ' + formatDate(key.expires_at) : '永不过期'}
+                        </div>
+                    </div>
+                    <div class="key-actions">
+                        <button class="btn btn-danger btn-sm" onclick="revokeAPIKey('${key.id}')">撤销</button>
+                    </div>
+                </div>
+            `).join('');
+
+            document.getElementById('keyList').innerHTML = html;
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const date = new Date(dateStr);
+            return date.toLocaleString('zh-CN');
+        }
+
+        async function saveAuthConfig() {
+            const config = {
+                ...currentConfig,
+                mqtt_username: document.getElementById('mqttUsername').value,
+                mqtt_password: document.getElementById('mqttPassword').value
+            };
+
+            try {
+                const response = await fetch('/api/config/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showAlert('success', '认证配置保存成功！');
+                } else {
+                    showAlert('error', '保存失败: ' + (result.error || '未知错误'));
+                }
+            } catch (error) {
+                showAlert('error', '保存配置失败: ' + error.message);
+            }
+        }
+
+        function resetAuthConfig() {
+            populateForm({
+                mqtt_username: '',
+                mqtt_password: ''
+            });
+        }
+
+        function showCreateKeyModal() {
+            if (!keyModal) {
+                keyModal = new bootstrap.Modal(document.getElementById('createKeyModal'));
+            }
+            keyModal.show();
+        }
+
+        async function createAPIKey() {
+            const userID = document.getElementById('newKeyUserID').value;
+            const role = document.getElementById('newKeyRole').value;
+            const expiresIn = parseInt(document.getElementById('newKeyExpiry').value) || 0;
+
+            if (!userID) {
+                showAlert('error', '请输入用户ID');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/auth/create-key', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userID, role: role, expires_in: expiresIn })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showAlert('success', 'API密钥创建成功！密钥: ' + result.api_key);
+                    keyModal.hide();
+                    loadAPIKeys();
+                } else {
+                    showAlert('error', '创建失败: ' + (result.error || '未知错误'));
+                }
+            } catch (error) {
+                showAlert('error', '创建API密钥失败: ' + error.message);
+            }
+        }
+
+        async function revokeAPIKey(keyId) {
+            if (!confirm('确定要撤销这个API密钥吗？')) return;
+
+            try {
+                const response = await fetch('/api/auth/revoke-key', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ api_key: keyId })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showAlert('success', 'API密钥已撤销');
+                    loadAPIKeys();
+                } else {
+                    showAlert('error', '撤销失败: ' + (result.error || '未知错误'));
+                }
+            } catch (error) {
+                showAlert('error', '撤销API密钥失败: ' + error.message);
+            }
+        }
+
+        function getCurrentAPIKey() {
+            return localStorage.getItem('apiKey') || '';
+        }
+
+        function showAlert(type, message) {
+            const container = document.getElementById('alertContainer');
+            const alertClass = type === 'success' ? 'alert-success' :
+                              type === 'error' ? 'alert-error' : 'alert-warning';
+            container.innerHTML = `<div class="alert ${alertClass}">${message}</div>`;
+            setTimeout(() => { container.innerHTML = ''; }, 5000);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadConfig();
+            loadAPIKeys();
+        });
+    </script>
+</body>
+</html>

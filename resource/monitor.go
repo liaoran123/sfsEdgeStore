@@ -3,13 +3,15 @@ package resource
 import (
 	"fmt"
 	"log"
-	"math"
+	"os"
 	"runtime"
 	"runtime/debug"
 	"sync"
 	"time"
 
 	"sfsEdgeStore/config"
+
+	"github.com/shirou/gopsutil/v4/process"
 )
 
 // ResourceUsage 资源使用情况
@@ -136,17 +138,29 @@ func (rm *ResourceMonitor) collectUsage() ResourceUsage {
 
 // getCPUPercent 获取 CPU 使用率
 func (rm *ResourceMonitor) getCPUPercent() float64 {
-	numCPU := runtime.NumCPU()
-	if numCPU == 0 {
+	percent, err := cpu_percent()
+	if err != nil {
 		return 0
 	}
+	return percent
+}
 
-	// 简化的 CPU 使用率估算（基于 Goroutine 数量和系统负载）
-	// 实际项目中可以使用更精确的方法
-	goroutines := runtime.NumGoroutine()
-	baseCPU := math.Min(float64(goroutines)/10, 5)
-	
-	return baseCPU
+// cpu_percent 获取 CPU 使用率（非阻塞方式）
+func cpu_percent() (float64, error) {
+	// 获取当前进程
+	pid := int32(os.Getpid())
+	proc, err := process.NewProcess(pid)
+	if err != nil {
+		return 0, err
+	}
+
+	// 获取进程 CPU 使用率
+	cpuPercent, err := proc.CPUPercent()
+	if err != nil {
+		return 0, err
+	}
+
+	return cpuPercent, nil
 }
 
 // checkMemory 检查内存使用

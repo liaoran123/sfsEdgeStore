@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>订阅主题管理 - sfsEdgeStore</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #007bff;
+            --secondary-color: #1a1a2e;
+            --accent-color: #16213e;
+            --text-color: #eee;
+            --text-muted: #888;
+            --success-color: #28a745;
+            --warning-color: #ffc107;
+            --danger-color: #dc3545;
+            --info-color: #17a2b8;
+            --bg-gradient: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-color);
+            min-height: 100vh;
+        }
+
+        .navbar {
+            background: rgba(22, 33, 62, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .navbar-brand {
+            color: var(--primary-color) !important;
+            font-weight: 600;
+            font-size: 1.5rem;
+        }
+
+        .nav-link {
+            color: var(--text-color) !important;
+            transition: all 0.3s ease;
+        }
+
+        .nav-link:hover {
+            color: var(--primary-color) !important;
+        }
+
+        .nav-link.active {
+            color: var(--primary-color) !important;
+            border-bottom: 2px solid var(--primary-color);
+        }
+
+        .container {
+            max-width: 1200px;
+            padding: 2rem 1rem;
+        }
+
+        .page-header {
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .page-title {
+            font-size: 2rem;
+            font-weight: 600;
+            color: var(--text-color);
+            margin-bottom: 0.5rem;
+        }
+
+        .page-subtitle {
+            color: var(--text-muted);
+            font-size: 1rem;
+        }
+
+        .card {
+            background: rgba(22, 33, 62, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            backdrop-filter: blur(10px);
+        }
+
+        .card-header {
+            background: rgba(0, 123, 255, 0.1);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 1rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-color);
+            margin: 0;
+        }
+
+        .card-body {
+            padding: 1.5rem;
+        }
+
+        .info-box {
+            background: rgba(0, 123, 255, 0.1);
+            border: 1px solid rgba(0, 123, 255, 0.3);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .info-box-title {
+            font-weight: 600;
+            color: var(--primary-color);
+            margin-bottom: 0.5rem;
+        }
+
+        .info-box-content {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .info-box-content ul {
+            margin: 0;
+            padding-left: 1.2rem;
+        }
+
+        .info-box-content li {
+            margin-bottom: 0.25rem;
+        }
+
+        .table-container {
+            overflow-x: auto;
+        }
+
+        .table {
+            color: var(--text-color);
+            margin-bottom: 0;
+        }
+
+        .table thead th {
+            background: rgba(0, 123, 255, 0.2);
+            border-bottom: 2px solid rgba(0, 123, 255, 0.3);
+            color: var(--text-color);
+            font-weight: 600;
+            padding: 1rem;
+        }
+
+        .table tbody td {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 1rem;
+            vertical-align: middle;
+        }
+
+        .table tbody tr:hover {
+            background: rgba(0, 123, 255, 0.1);
+        }
+
+        .table-dark {
+            background: transparent;
+        }
+
+        .table-hover tbody tr:hover {
+            background-color: rgba(0, 123, 255, 0.1);
+        }
+
+        .topic-name {
+            font-family: 'Courier New', monospace;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            color: var(--info-color);
+        }
+
+        .badge {
+            padding: 0.4rem 0.8rem;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+
+        .btn-primary:hover {
+            background: #0056b3;
+            border-color: #0056b3;
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: rgba(108, 117, 125, 0.2);
+            border: 1px solid rgba(108, 117, 125, 0.5);
+            color: var(--text-color);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(108, 117, 125, 0.3);
+            color: var(--text-color);
+        }
+
+        .btn-danger {
+            background: rgba(220, 53, 69, 0.2);
+            border: 1px solid rgba(220, 53, 69, 0.5);
+            color: var(--danger-color);
+        }
+
+        .btn-danger:hover {
+            background: var(--danger-color);
+            color: white;
+        }
+
+        .btn-success {
+            background: rgba(40, 167, 69, 0.2);
+            border: 1px solid rgba(40, 167, 69, 0.5);
+            color: var(--success-color);
+        }
+
+        .btn-success:hover {
+            background: var(--success-color);
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 0.35rem 0.75rem;
+            font-size: 0.875rem;
+        }
+
+        .form-control {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: var(--text-color);
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+        }
+
+        .form-control:focus {
+            background: rgba(0, 0, 0, 0.3);
+            border-color: var(--primary-color);
+            color: var(--text-color);
+            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+        }
+
+        .form-control::placeholder {
+            color: var(--text-muted);
+        }
+
+        .form-label {
+            color: var(--text-color);
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+        }
+
+        .form-hint {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            margin-top: 0.25rem;
+        }
+
+        .modal-content {
+            background: var(--secondary-color);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+        }
+
+        .modal-header {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .modal-footer {
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-close-white {
+            filter: invert(1);
+        }
+
+        .alert {
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .alert-success {
+            background: rgba(40, 167, 69, 0.2);
+            border: 1px solid rgba(40, 167, 69, 0.5);
+            color: var(--success-color);
+        }
+
+        .alert-error {
+            background: rgba(220, 53, 69, 0.2);
+            border: 1px solid rgba(220, 53, 69, 0.5);
+            color: var(--danger-color);
+        }
+
+        .alert-warning {
+            background: rgba(255, 193, 7, 0.2);
+            border: 1px solid rgba(255, 193, 7, 0.5);
+            color: var(--warning-color);
+        }
+
+        .text-muted {
+            color: var(--text-muted) !important;
+        }
+
+        .text-primary {
+            color: var(--primary-color) !important;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        #alertContainer {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            z-index: 1050;
+            max-width: 400px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .stat-card {
+            background: rgba(0, 123, 255, 0.1);
+            border: 1px solid rgba(0, 123, 255, 0.3);
+            border-radius: 8px;
+            padding: 1rem;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary-color);
+        }
+
+        .stat-label {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-top: 0.25rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">sfsEdgeStore</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">仪表盘</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/mqtt-config">MQTT配置</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/subscription-status">订阅状态</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/subscription-topics">订阅主题</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/auth-config">认证配置</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div id="alertContainer"></div>
+
+        <div class="page-header">
+            <h1 class="page-title">📋 订阅主题管理</h1>
+            <p class="page-subtitle">管理MQTT订阅主题，支持添加、删除和测试自定义主题</p>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="totalTopics">-</div>
+                <div class="stat-label">总主题数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="standardTopics">-</div>
+                <div class="stat-label">标准主题</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="customTopics">-</div>
+                <div class="stat-label">自定义主题</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="connectionStatus">-</div>
+                <div class="stat-label">连接状态</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">🌐 标准订阅主题</h3>
+            </div>
+            <div class="card-body">
+                <div class="info-box">
+                    <div class="info-box-title">💡 主题格式说明</div>
+                    <div class="info-box-content">
+                        <ul>
+                            <li><strong>+</strong> - 匹配单个层级，例如 <code>devices/+/data</code> 匹配所有设备的数据</li>
+                            <li><strong>#</strong> - 匹配任意层级，例如 <code>edgex/events/#</code> 匹配所有EdgeX事件</li>
+                            <li><strong>自动订阅</strong> - 系统根据EdgeX版本自动订阅相应的标准主题</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table class="table table-dark table-hover">
+                        <thead>
+                            <tr>
+                                <th>主题</th>
+                                <th>类型</th>
+                                <th>描述</th>
+                                <th>状态</th>
+                            </tr>
+                        </thead>
+                        <tbody id="standardTopicsTableBody">
+                            <tr>
+                                <td colspan="4" class="text-center text-muted">加载中...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">✏️ 自定义订阅主题</h3>
+                <button class="btn btn-primary btn-sm" onclick="showAddTopicModal()">+ 添加主题</button>
+            </div>
+            <div class="card-body">
+                <div class="info-box">
+                    <div class="info-box-title">💡 添加自定义主题</div>
+                    <div class="info-box-content">
+                        <ul>
+                            <li>自定义主题用于订阅非标准MQTT主题或第三方系统的主题</li>
+                            <li>支持通配符 <code>+</code> 和 <code>#</code></li>
+                            <li>添加后会自动订阅，无需重启服务</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table class="table table-dark table-hover">
+                        <thead>
+                            <tr>
+                                <th>主题</th>
+                                <th>添加时间</th>
+                                <th>状态</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="customTopicsTableBody">
+                            <tr>
+                                <td colspan="4" class="text-center text-muted">加载中...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">🧪 主题测试</h3>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="form-group">
+                            <label class="form-label">测试主题</label>
+                            <input type="text" class="form-control" id="testTopic" placeholder="输入要测试的主题，例如: devices/+/data">
+                        </div>
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <button class="btn btn-success w-100" onclick="testTopic()">🔍 测试主题</button>
+                    </div>
+                </div>
+                <div class="info-box mt-3">
+                    <div class="info-box-title">测试结果</div>
+                    <div class="info-box-content" id="testResult">
+                        等待测试...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="addTopicModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title text-primary">添加订阅主题</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label">主题</label>
+                        <input type="text" class="form-control" id="newTopic" placeholder="例如: devices/+/data">
+                        <div class="form-hint">支持通配符 + 和 #</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="addTopic()">添加</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let standardTopicsList = [
+            { topic: 'edgex/events/#', type: '标准', desc: 'EdgeX事件主题（推荐）' },
+            { topic: 'devices/+/data', type: '标准', desc: '设备数据主题' },
+            { topic: 'edgex/events/core/#', type: '标准', desc: 'EdgeX Core服务事件' },
+            { topic: 'edgex/v2/events/#', type: '标准', desc: 'EdgeX V2事件主题' }
+        ];
+
+        let customTopics = [];
+        let addTopicModal = null;
+
+        async function loadData() {
+            await loadConnectionStatus();
+            await loadTopics();
+            renderStandardTopics();
+            updateStats();
+        }
+
+        async function loadConnectionStatus() {
+            try {
+                const response = await fetch('/api/subscription/status');
+                const result = await response.json();
+                document.getElementById('connectionStatus').textContent = result.connected ? '已连接' : '未连接';
+                document.getElementById('connectionStatus').style.color = result.connected ? '#28a745' : '#dc3545';
+            } catch (error) {
+                document.getElementById('connectionStatus').textContent = '未知';
+            }
+        }
+
+        async function loadTopics() {
+            try {
+                const response = await fetch('/api/subscription/themes');
+                const result = await response.json();
+                if (result.status === 'success' && result.topics) {
+                    customTopics = result.custom_topics || [];
+                    renderCustomTopics();
+                }
+            } catch (error) {
+                showAlert('error', '加载主题失败: ' + error.message);
+            }
+        }
+
+        function renderStandardTopics() {
+            const tbody = document.getElementById('standardTopicsTableBody');
+            const html = standardTopicsList.map(t => `
+                <tr>
+                    <td class="topic-name">${t.topic}</td>
+                    <td><span class="badge bg-info">${t.type}</span></td>
+                    <td>${t.desc}</td>
+                    <td><span class="badge bg-success">已订阅</span></td>
+                </tr>
+            `).join('');
+            tbody.innerHTML = html;
+        }
+
+        function renderCustomTopics() {
+            const tbody = document.getElementById('customTopicsTableBody');
+            if (customTopics.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">暂无自定义主题，点击上方按钮添加</td></tr>';
+                return;
+            }
+
+            const html = customTopics.map((t, index) => `
+                <tr>
+                    <td class="topic-name">${t.topic}</td>
+                    <td>${t.added_at || '未知'}</td>
+                    <td><span class="badge ${t.active ? 'bg-success' : 'bg-warning'}">${t.active ? '已订阅' : '未激活'}</span></td>
+                    <td>
+                        <button class="btn btn-danger btn-sm" onclick="removeTopic(${index})">删除</button>
+                    </td>
+                </tr>
+            `).join('');
+            tbody.innerHTML = html;
+        }
+
+        function updateStats() {
+            document.getElementById('totalTopics').textContent = standardTopicsList.length + customTopics.length;
+            document.getElementById('standardTopics').textContent = standardTopicsList.length;
+            document.getElementById('customTopics').textContent = customTopics.length;
+        }
+
+        function showAlert(type, message) {
+            const container = document.getElementById('alertContainer');
+            const alertClass = type === 'success' ? 'alert-success' :
+                              type === 'error' ? 'alert-error' : 'alert-warning';
+            container.innerHTML = `<div class="alert ${alertClass}">${message}</div>`;
+            setTimeout(() => { container.innerHTML = ''; }, 5000);
+        }
+
+        function showAddTopicModal() {
+            if (!addTopicModal) {
+                addTopicModal = new bootstrap.Modal(document.getElementById('addTopicModal'));
+            }
+            document.getElementById('newTopic').value = '';
+            addTopicModal.show();
+        }
+
+        async function addTopic() {
+            const topic = document.getElementById('newTopic').value.trim();
+            if (!topic) {
+                showAlert('error', '请输入主题');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/subscription/themes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ topic: topic })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showAlert('success', '主题添加成功');
+                    addTopicModal.hide();
+                    loadTopics();
+                } else {
+                    showAlert('error', '添加失败: ' + (result.error || '未知错误'));
+                }
+            } catch (error) {
+                showAlert('error', '添加主题失败: ' + error.message);
+            }
+        }
+
+        async function removeTopic(index) {
+            if (!confirm('确定要删除这个主题吗？')) return;
+
+            const topic = customTopics[index];
+            try {
+                const response = await fetch('/api/subscription/themes', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ topic: topic.topic })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showAlert('success', '主题删除成功');
+                    loadTopics();
+                } else {
+                    showAlert('error', '删除失败: ' + (result.error || '未知错误'));
+                }
+            } catch (error) {
+                showAlert('error', '删除主题失败: ' + error.message);
+            }
+        }
+
+        async function testTopic() {
+            const topic = document.getElementById('testTopic').value.trim();
+            if (!topic) {
+                document.getElementById('testResult').innerHTML = '<span style="color: #ffc107;">请输入要测试的主题</span>';
+                return;
+            }
+
+            document.getElementById('testResult').innerHTML = '<span style="color: #17a2b8;">正在测试...</span>';
+
+            try {
+                const response = await fetch('/api/subscription/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ topic: topic })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    document.getElementById('testResult').innerHTML = `
+                        <span style="color: #28a745;">✅ 主题测试成功！</span><br>
+                        <small>主题格式正确，可以正常订阅</small>
+                    `;
+                } else {
+                    document.getElementById('testResult').innerHTML = `
+                        <span style="color: #dc3545;">❌ 测试失败</span><br>
+                        <small>${result.error || '未知错误'}</small>
+                    `;
+                }
+            } catch (error) {
+                document.getElementById('testResult').innerHTML = `
+                    <span style="color: #dc3545;">❌ 测试失败</span><br>
+                    <small>${error.message}</small>
+                `;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', loadData);
+    </script>
+</body>
+</html>

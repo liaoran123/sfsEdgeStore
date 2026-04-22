@@ -401,46 +401,6 @@ function openConfig() {
     alert('配置管理功能开发中...');
 }
 
-// 一键配置
-async function oneClickConfig() {
-    if (!confirm('确定要执行一键配置吗？这将自动检测环境并应用最佳配置。')) {
-        return;
-    }
-
-    try {
-        // 显示加载状态
-        const originalText = document.querySelector('button[onclick="oneClickConfig()"]').textContent;
-        document.querySelector('button[onclick="oneClickConfig()"]').textContent = '配置中...';
-        document.querySelector('button[onclick="oneClickConfig()"]').disabled = true;
-
-        // 调用一键配置API
-        const response = await fetch('/api/config/oneclick', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-
-        const result = await response.json();
-
-        if (result.status === 'success') {
-            alert('✅ 一键配置成功！系统已自动检测环境并应用最佳配置。');
-            // 刷新页面以应用新配置
-            setTimeout(() => {
-                window.location.reload();
-            }, 1000);
-        } else {
-            alert('❌ 配置失败: ' + (result.error || '未知错误'));
-        }
-    } catch (error) {
-        alert('❌ 配置失败: ' + error.message);
-    } finally {
-        // 恢复按钮状态
-        document.querySelector('button[onclick="oneClickConfig()"]').textContent = '✨ 一键配置';
-        document.querySelector('button[onclick="oneClickConfig()"]').disabled = false;
-    }
-}
-
 // 窗口大小改变时重新调整图表
 window.addEventListener('resize', function() {
     if (trendChart) {

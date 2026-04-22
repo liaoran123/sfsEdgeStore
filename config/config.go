@@ -34,6 +34,7 @@ type Config struct {
 	ClientID      string `json:"client_id" env:"EDGEX_CLIENT_ID"`
 	HTTPPort      string `json:"http_port" env:"EDGEX_HTTP_PORT"`
 	DevConfigPath string `json:"dev_config_path" env:"EDGEX_DEV_CONFIG_PATH"`
+	AutoSubscribe bool   `json:"auto_subscribe" env:"EDGEX_AUTO_SUBSCRIBE"`
 	// TLS 配置
 	MQTTUseTLS     bool   `json:"mqtt_use_tls" env:"EDGEX_MQTT_USE_TLS"`
 	MQTTCACert     string `json:"mqtt_ca_cert" env:"EDGEX_MQTT_CA_CERT"`
@@ -221,17 +222,18 @@ func (cm *ConfigManager) GetScenarioOptions() *opt.Options {
 func Load() (*Config, error) {
 	// 1. 设置默认配置
 	cfg := &Config{
-		DBPath:        "./edgex_data",
-		MQTTBroker:    "tcp://localhost:1883",
-		MQTTTopic:     "edgex/events/core/#",
-		ClientID:      generateClientID(),
+		DBPath:        "", // 留空默认在当前目录建data文件夹
+		MQTTBroker:    "", // 留空默认连接 localhost:1883
+		MQTTTopic:     "", // 留空默认订阅 edgex/events/#
+		ClientID:      GenerateClientID(),
 		HTTPPort:      "8081",        // 默认HTTP端口
 		DevConfigPath: "./devconfig", // 默认设备配置路径
+		AutoSubscribe: true,          // 默认启用自动订阅
 		// TLS 默认值（默认开启以保证传输安全）
-		MQTTUseTLS: true,
-		HTTPUseTLS: true,
+		MQTTUseTLS: false, // 智能检测，默认关闭以简化初次使用
+		HTTPUseTLS: false, // 智能检测，默认关闭以简化初次使用
 		// 数据库加密默认值（默认开启以保证数据安全）
-		DBUseEncryption:       true,
+		DBUseEncryption:       false, // 智能检测，默认关闭以简化初次使用
 		DBEncryptionAlgorithm: "AES-256-GCM",
 		// 分析引擎默认值
 		EnableAnalyzer:        false,
@@ -297,14 +299,65 @@ func Load() (*Config, error) {
 	// 4. 从环境变量加载（优先级最高）
 	loadFromEnv(cfg)
 
+	// 5. 应用智能默认值
+	applySmartDefaults(cfg)
+
 	// 设置到配置管理器
 	GetConfigManager().SetConfig(cfg)
 
 	return cfg, nil
 }
 
-// generateClientID 生成客户端ID
-func generateClientID() string {
+// applySmartDefaults 应用智能默认值
+func applySmartDefaults(cfg *Config) {
+	// MQTT Broker 默认值
+	if cfg.MQTTBroker == "" {
+		cfg.MQTTBroker = "tcp://localhost:1883"
+	}
+
+	// MQTT Topic 默认值
+	if cfg.MQTTTopic == "" {
+		cfg.MQTTTopic = "edgex/events/#"
+	}
+
+	// DB Path 默认值
+	if cfg.DBPath == "" {
+		cfg.DBPath = "./data/sfs.db"
+	}
+
+	// 确保数据目录存在
+	ensureDataDir(cfg.DBPath)
+}
+
+// ensureDataDir 确保数据目录存在
+func ensureDataDir(dbPath string) {
+	// 提取目录部分
+	dir := dbPath
+	if len(dbPath) > 0 && dbPath[len(dbPath)-1] != '/' {
+		lastSlash := -1
+		for i := len(dbPath) - 1; i >= 0; i-- {
+			if dbPath[i] == '/' || dbPath[i] == '\\' {
+				lastSlash = i
+				break
+			}
+		}
+		if lastSlash != -1 {
+			dir = dbPath[:lastSlash]
+		} else {
+			dir = "."
+		}
+	}
+
+	// 创建目录
+	if dir != "" {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			log.Printf("Failed to create data directory: %v", err)
+		}
+	}
+}
+
+// GenerateClientID 生成客户端ID
+func GenerateClientID() string {
 	return "sfsdb-edgex-adapter-" + time.Now().Format("20060102150405")
 }
 

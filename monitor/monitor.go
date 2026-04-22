@@ -31,8 +31,8 @@ type Monitor struct {
 
 // InternalMetrics 内部监控指标（使用atomic类型）
 type InternalMetrics struct {
-	System      SystemMetrics       `json:"system"`
-	Database    DatabaseMetrics     `json:"database"`
+	System      SystemMetrics              `json:"system"`
+	Database    DatabaseMetrics            `json:"database"`
 	Application InternalApplicationMetrics `json:"application"`
 }
 
@@ -43,6 +43,9 @@ type InternalApplicationMetrics struct {
 	HTTPRequests          atomic.Int64
 	DatabaseOperations    atomic.Int64
 	Errors                atomic.Int64
+	MQTTConnectionStatus  atomic.Bool  // MQTT连接状态
+	DataReceivedBytes     atomic.Int64 // 数据接收字节数
+	DataStoredBytes       atomic.Int64 // 数据存储字节数
 }
 
 // Metrics 导出的监控指标（使用普通类型）
@@ -73,6 +76,9 @@ type ApplicationMetrics struct {
 	HTTPRequests          int64 `json:"http_requests"`           // HTTP请求计数
 	DatabaseOperations    int64 `json:"database_operations"`     // 数据库操作计数
 	Errors                int64 `json:"errors"`                  // 错误计数
+	MQTTConnected         bool  `json:"mqtt_connected"`          // MQTT连接状态
+	DataReceivedBytes     int64 `json:"data_received_bytes"`     // 数据接收字节数
+	DataStoredBytes       int64 `json:"data_stored_bytes"`       // 数据存储字节数
 }
 
 // AlertThresholds 告警阈值
@@ -114,6 +120,9 @@ func (m *Monitor) toExportedMetrics() Metrics {
 			HTTPRequests:          m.metrics.Application.HTTPRequests.Load(),
 			DatabaseOperations:    m.metrics.Application.DatabaseOperations.Load(),
 			Errors:                m.metrics.Application.Errors.Load(),
+			MQTTConnected:         m.metrics.Application.MQTTConnectionStatus.Load(),
+			DataReceivedBytes:     m.metrics.Application.DataReceivedBytes.Load(),
+			DataStoredBytes:       m.metrics.Application.DataStoredBytes.Load(),
 		},
 	}
 }
@@ -139,10 +148,14 @@ func (m *Monitor) collectSystemMetrics() {
 	m.metrics.System.Goroutines = runtime.NumGoroutine()
 	m.metrics.System.Uptime = int64(time.Since(m.startTime).Seconds())
 
-	// 简化的CPU和内存使用情况
+	// 内存使用情况
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
 	m.metrics.System.MemoryUsage = float64(memStats.Alloc) / 1024 / 1024 // MB
+
+	// CPU使用率：Go标准库不支持获取进程CPU使用率，保持为0
+	// 可以通过goroutines数量间接判断负载
+	m.metrics.System.CPUUsage = 0
 }
 
 // collectDatabaseMetrics 收集数据库指标
@@ -185,6 +198,29 @@ func (m *Monitor) IncrementDatabaseOperations() {
 // IncrementErrors 增加错误计数
 func (m *Monitor) IncrementErrors() {
 	m.metrics.Application.Errors.Add(1)
+}
+
+// SetMQTTConnectionStatus 设置MQTT连接状态
+func (m *Monitor) SetMQTTConnectionStatus(connected bool) {
+	m.metrics.Application.MQTTConnectionStatus.Store(connected)
+	if !connected {
+		m.RecordError("mqtt_disconnected", "MQTT connection lost")
+	}
+}
+
+// IncrementDataReceivedBytes 增加数据接收字节数
+func (m *Monitor) IncrementDataReceivedBytes(bytes int64) {
+	m.metrics.Application.DataReceivedBytes.Add(bytes)
+}
+
+// IncrementDataStoredBytes 增加数据存储字节数
+func (m *Monitor) IncrementDataStoredBytes(bytes int64) {
+	m.metrics.Application.DataStoredBytes.Add(bytes)
+}
+
+// IsMQTTConnected 获取MQTT连接状态
+func (m *Monitor) IsMQTTConnected() bool {
+	return m.metrics.Application.MQTTConnectionStatus.Load()
 }
 
 // RecordError 记录错误并触发告警
@@ -286,14 +322,14 @@ func (m *Monitor) CheckAlerts() []common.Alert {
 	// 添加新告警（加锁保护）
 	m.mutex.Lock()
 	m.alerts = append(m.alerts, newAlerts...)
-	
+
 	// 更新上次收集的指标值（逐个存储，不复制整个结构体）
 	m.lastMetrics.Application.MQTTMessagesReceived.Store(m.metrics.Application.MQTTMessagesReceived.Load())
 	m.lastMetrics.Application.MQTTMessagesProcessed.Store(m.metrics.Application.MQTTMessagesProcessed.Load())
 	m.lastMetrics.Application.HTTPRequests.Store(m.metrics.Application.HTTPRequests.Load())
 	m.lastMetrics.Application.DatabaseOperations.Store(m.metrics.Application.DatabaseOperations.Load())
 	m.lastMetrics.Application.Errors.Store(m.metrics.Application.Errors.Load())
-	
+
 	m.lastCollectTime = time.Now()
 	m.mutex.Unlock()
 

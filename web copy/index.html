@@ -366,14 +366,9 @@
                     <nav class="d-flex gap-3">
                         <a href="/" class="nav-link text-primary active">仪表盘</a>
                         <a href="/mqtt-config" class="nav-link">MQTT配置</a>
-                        <a href="/mqtt-subscription" class="nav-link">订阅主题</a>
-                        <a href="/tls-config" class="nav-link">TLS配置</a>
                         <a href="/auth-config" class="nav-link">认证配置</a>
-                        <a href="/api-keys" class="nav-link">API密钥</a>
-                        <a href="/data-records" class="nav-link">数据记录</a>
                         <a href="/subscription-status" class="nav-link">订阅状态</a>
-                        <a href="/system-health" class="nav-link">系统健康</a>
-                        <a href="/settings" class="nav-link">设置</a>
+                        <a href="/subscription-topics" class="nav-link">订阅主题</a>
                     </nav>
                     <div class="connection-status">
                         <span class="status-dot online" id="connectionDot"></span>
@@ -521,8 +516,7 @@
                 <div class="card-body">
                     <h5 class="card-title mb-4">🔧 快速操作</h5>
                     <div class="d-flex flex-column gap-2">
-                        <button class="btn btn-primary" onclick="oneClickConfig()">✨ 一键配置</button>
-                        <button class="btn btn-secondary" onclick="refreshData()">🔄 刷新数据</button>
+                        <button class="btn btn-primary" onclick="refreshData()">🔄 刷新数据</button>
                         <button class="btn btn-secondary" onclick="enterFullscreen()">📺 全屏模式</button>
                         <button class="btn btn-secondary" onclick="exportData()">💾 导出数据</button>
                         <button class="btn btn-secondary" onclick="openConfig()">⚙️ 配置管理</button>

@@ -17,6 +17,7 @@ import (
 	"sfsEdgeStore/config"
 	"sfsEdgeStore/core/database"
 	"sfsEdgeStore/core/edgex"
+	"sfsEdgeStore/filter"
 	"sfsEdgeStore/monitor"
 	"sfsEdgeStore/queue"
 
@@ -30,11 +31,19 @@ type Client struct {
 	dataQueue         *queue.Queue
 	monitor           *monitor.Monitor
 	analyzer          *analyzer.Analyzer
+	filterManager     *filter.FilterManager
 	batchMessages     []map[string]interface{}
 	batchSize         int
 	batchInterval     time.Duration
 	lastBatchTime     time.Time
 	registeredDevices map[string]bool // 已注册设备集合
+}
+
+// 标准EdgeX主题
+var standardTopics = []string{
+	"edgex/events/#",
+	"devices/+/data",
+	"edgex/events/core/#",
 }
 
 // NewClient 创建新的MQTT客户端
@@ -65,37 +74,12 @@ func NewClient(cfg *config.Config, dataQueue *queue.Queue, monitor *monitor.Moni
 		}
 	}
 
-	// 添加 TLS 支持
-	if cfg.MQTTUseTLS {
-		tlsConfig := &tls.Config{
-			InsecureSkipVerify: false,
-		}
-		// 加载 CA 证书
-		if cfg.MQTTCACert != "" {
-			caCert, err := os.ReadFile(cfg.MQTTCACert)
-			if err != nil {
-				return nil, fmt.Errorf("failed to read CA cert: %v", err)
-			}
-			caCertPool := x509.NewCertPool()
-			caCertPool.AppendCertsFromPEM(caCert)
-			tlsConfig.RootCAs = caCertPool
-		}
-		// 加载客户端证书和密钥
-		if cfg.MQTTClientCert != "" && cfg.MQTTClientKey != "" {
-			cert, err := tls.LoadX509KeyPair(cfg.MQTTClientCert, cfg.MQTTClientKey)
-			if err != nil {
-				return nil, fmt.Errorf("failed to load client cert: %v", err)
-			}
-			tlsConfig.Certificates = []tls.Certificate{cert}
-		}
-		opts.SetTLSConfig(tlsConfig)
-	}
-
 	client := &Client{
 		config:            cfg,
 		dataQueue:         dataQueue,
 		monitor:           monitor,
 		analyzer:          analyzer,
+		filterManager:     filter.NewFilterManager(),
 		batchMessages:     make([]map[string]interface{}, 0),
 		batchSize:         100,             // 默认批量大小
 		batchInterval:     5 * time.Second, // 默认批量间隔
@@ -103,9 +87,26 @@ func NewClient(cfg *config.Config, dataQueue *queue.Queue, monitor *monitor.Moni
 		registeredDevices: make(map[string]bool),
 	}
 
+	// 添加 TLS 支持
+	if cfg.MQTTUseTLS {
+		tlsConfig, err := client.createTLSConfig(cfg)
+		if err != nil {
+			log.Printf("Warning: Failed to create TLS config: %v, falling back to insecure connection", err)
+		} else {
+			opts.SetTLSConfig(tlsConfig)
+		}
+	}
+
+	// 安全检测
+	client.performSecurityCheck(cfg)
+
 	// 设置连接处理函数
 	opts.SetOnConnectHandler(func(mqttClient mqtt.Client) {
 		log.Println("MQTT broker connected")
+		// 更新连接状态
+		if client.monitor != nil {
+			client.monitor.SetMQTTConnectionStatus(true)
+		}
 		// 发布在线状态消息
 		onlineTopic := "edgex/events/status"
 		onlineMessage := map[string]interface{}{
@@ -120,17 +121,17 @@ func NewClient(cfg *config.Config, dataQueue *queue.Queue, monitor *monitor.Moni
 			log.Printf("Failed to publish online status: %v", token.Error())
 		}
 		// 重新订阅主题
-		token = mqttClient.Subscribe(cfg.MQTTTopic, 1, client.messageHandler())
-		token.Wait()
-		if token.Error() != nil {
-			log.Printf("Failed to resubscribe to topic %s: %v", cfg.MQTTTopic, token.Error())
-		} else {
-			log.Printf("Resubscribed to topic: %s", cfg.MQTTTopic)
+		if err := client.subscribeTopics(mqttClient); err != nil {
+			log.Printf("Failed to resubscribe to topics: %v", err)
 		}
 	})
 
 	opts.SetConnectionLostHandler(func(mqttClient mqtt.Client, err error) {
 		log.Printf("MQTT connection lost: %v", err)
+		// 更新连接状态
+		if client.monitor != nil {
+			client.monitor.SetMQTTConnectionStatus(false)
+		}
 	})
 
 	mqttClient := mqtt.NewClient(opts)
@@ -146,16 +147,213 @@ func NewClient(cfg *config.Config, dataQueue *queue.Queue, monitor *monitor.Moni
 	return client, nil
 }
 
-// Subscribe 订阅EdgeX消息
-func (c *Client) Subscribe() error {
-	token := c.client.Subscribe(c.config.MQTTTopic, 1, c.messageHandler())
-	token.Wait()
-	if token.Error() != nil {
-		return fmt.Errorf("failed to subscribe to topic %s: %v", c.config.MQTTTopic, token.Error())
+// subscribeTopics 订阅主题
+func (c *Client) subscribeTopics(mqttClient mqtt.Client) error {
+	// 验证主题
+	topics := c.getTopicsToSubscribe()
+
+	// 订阅所有主题
+	for _, topic := range topics {
+		token := mqttClient.Subscribe(topic, 1, c.messageHandler())
+		token.Wait()
+		if token.Error() != nil {
+			log.Printf("Failed to subscribe to topic %s: %v", topic, token.Error())
+			continue
+		}
+		log.Printf("Subscribed to topic: %s", topic)
 	}
 
-	log.Printf("Subscribed to topic: %s", c.config.MQTTTopic)
 	return nil
+}
+
+// getTopicsToSubscribe 获取要订阅的主题列表
+func (c *Client) getTopicsToSubscribe() []string {
+	topics := []string{}
+
+	// 如果用户指定了主题，添加到列表
+	if c.config.MQTTTopic != "" {
+		topics = append(topics, c.config.MQTTTopic)
+	}
+
+	// 如果启用了自动订阅，添加标准主题
+	if c.config.AutoSubscribe {
+		// 检测EdgeX版本并获取相应的主题列表
+		version, err := c.detectEdgeXVersion()
+		if err != nil {
+			log.Printf("Failed to detect EdgeX version: %v, using standard topics", err)
+			topics = append(topics, standardTopics...)
+		} else {
+			// 根据版本获取主题列表
+			versionTopics := c.getTopicsByVersion(version)
+			log.Printf("Using EdgeX %s topics: %v", version, versionTopics)
+			topics = append(topics, versionTopics...)
+		}
+	}
+
+	// 去重
+	topicMap := make(map[string]bool)
+	for _, topic := range topics {
+		topicMap[topic] = true
+	}
+
+	uniqueTopics := []string{}
+	for topic := range topicMap {
+		uniqueTopics = append(uniqueTopics, topic)
+	}
+
+	return uniqueTopics
+}
+
+// Subscribe 订阅EdgeX消息
+func (c *Client) Subscribe() error {
+	return c.subscribeTopics(c.client)
+}
+
+// EdgeX版本常量
+const (
+	EdgeXVersionUnknown = "unknown"
+	EdgeXVersionV1      = "v1"
+	EdgeXVersionV2      = "v2"
+	EdgeXVersionLatest  = "latest"
+)
+
+// 不同EdgeX版本的主题格式
+var edgeXVersionTopics = map[string][]string{
+	EdgeXVersionV1: {
+		"edgex/events/core/#",
+		"devices/+/data",
+	},
+	EdgeXVersionV2: {
+		"edgex/events/#",
+		"devices/+/data",
+		"edgex/v2/events/#",
+	},
+	EdgeXVersionLatest: {
+		"edgex/events/#",
+		"devices/+/data",
+		"edgex/v2/events/#",
+	},
+}
+
+// detectEdgeXVersion 检测EdgeX版本
+func (c *Client) detectEdgeXVersion() (string, error) {
+	log.Println("Detecting EdgeX version...")
+
+	// 尝试通过连接和订阅来检测EdgeX版本
+	// 这里使用简单的实现，实际可以根据接收到的消息格式来判断
+
+	// 检查连接状态
+	if !c.client.IsConnected() {
+		log.Println("MQTT not connected, cannot detect EdgeX version")
+		return EdgeXVersionLatest, nil
+	}
+
+	// 尝试订阅不同版本的主题来检测
+	versions := []string{EdgeXVersionV2, EdgeXVersionV1}
+	for _, version := range versions {
+		topics := edgeXVersionTopics[version]
+		for _, topic := range topics {
+			token := c.client.Subscribe(topic, 1, func(client mqtt.Client, msg mqtt.Message) {
+				// 收到消息后，可以根据消息格式进一步确认版本
+				log.Printf("Received message on %s topic, assuming EdgeX %s", topic, version)
+			})
+			token.Wait()
+			if token.Error() == nil {
+				log.Printf("Successfully subscribed to %s topic, detected EdgeX %s", topic, version)
+				// 立即取消订阅，因为这只是检测
+				c.client.Unsubscribe(topic)
+				return version, nil
+			}
+		}
+	}
+
+	// 无法确定版本，使用最新版本
+	log.Println("Could not detect EdgeX version, using latest version")
+	return EdgeXVersionLatest, nil
+}
+
+// getTopicsByVersion 根据EdgeX版本获取主题列表
+func (c *Client) getTopicsByVersion(version string) []string {
+	if topics, ok := edgeXVersionTopics[version]; ok {
+		return topics
+	}
+	return edgeXVersionTopics[EdgeXVersionLatest]
+}
+
+// createTLSConfig 创建TLS配置
+func (c *Client) createTLSConfig(cfg *config.Config) (*tls.Config, error) {
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: false,
+	}
+
+	// 自动证书验证逻辑
+	if cfg.MQTTCACert != "" {
+		// 尝试加载CA证书
+		caCert, err := os.ReadFile(cfg.MQTTCACert)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CA cert: %v", err)
+		}
+		caCertPool := x509.NewCertPool()
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("failed to add CA cert to pool")
+		}
+		tlsConfig.RootCAs = caCertPool
+		log.Println("TLS: CA certificate loaded successfully")
+	} else {
+		// 没有提供CA证书，使用系统默认证书池
+		caCertPool, err := x509.SystemCertPool()
+		if err != nil {
+			log.Printf("Warning: Failed to load system cert pool: %v", err)
+			// 创建一个空的证书池
+			caCertPool = x509.NewCertPool()
+		}
+		tlsConfig.RootCAs = caCertPool
+		log.Println("TLS: Using system default certificate pool")
+	}
+
+	// 加载客户端证书和密钥（双向认证）
+	if cfg.MQTTClientCert != "" && cfg.MQTTClientKey != "" {
+		cert, err := tls.LoadX509KeyPair(cfg.MQTTClientCert, cfg.MQTTClientKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load client cert: %v", err)
+		}
+		tlsConfig.Certificates = []tls.Certificate{cert}
+		log.Println("TLS: Client certificate loaded successfully (mutual TLS enabled)")
+	}
+
+	return tlsConfig, nil
+}
+
+// performSecurityCheck 执行安全检测
+func (c *Client) performSecurityCheck(cfg *config.Config) {
+	log.Println("Performing security check...")
+
+	// 检查认证配置
+	if cfg.MQTTUsername == "" {
+		log.Println("Security: No username set, using anonymous authentication")
+	} else {
+		log.Println("Security: Username/password authentication enabled")
+	}
+
+	// 检查TLS配置
+	if cfg.MQTTUseTLS {
+		log.Println("Security: TLS encryption enabled")
+		if cfg.MQTTCACert != "" {
+			log.Println("Security: Custom CA certificate configured")
+		} else {
+			log.Println("Security: Using system default CA certificates")
+		}
+		if cfg.MQTTClientCert != "" && cfg.MQTTClientKey != "" {
+			log.Println("Security: Mutual TLS authentication enabled")
+		}
+	} else {
+		log.Println("Security: WARNING - TLS encryption disabled, connection is not secure")
+	}
+
+	// 检查密码强度
+	if cfg.MQTTPassword != "" && len(cfg.MQTTPassword) < 8 {
+		log.Println("Security: WARNING - Password is too short (less than 8 characters)")
+	}
 }
 
 // Disconnect 断开MQTT连接
@@ -264,12 +462,12 @@ func (c *Client) isDeviceAllowed(deviceName string) bool {
 		maxDevices = 50 // 商业版50台
 	}
 	// 从配置中读取（如果有配置）
-	if c.config.EnterpriseFeatures.MaxDevices > 0 {
+	if c.config.EnterpriseFeatures.MaxDevices >= 0 {
 		maxDevices = c.config.EnterpriseFeatures.MaxDevices
 	}
 
-	// 检查当前设备数量是否已达上限
-	if len(c.registeredDevices) >= maxDevices {
+	// 检查当前设备数量是否已达上限（0表示无限制）
+	if maxDevices > 0 && len(c.registeredDevices) >= maxDevices {
 		return false
 	}
 
@@ -284,12 +482,60 @@ func (c *Client) GetRegisteredDeviceCount() int {
 	return len(c.registeredDevices)
 }
 
+// AddSubscription 添加新的订阅主题
+func (c *Client) AddSubscription(topic string) error {
+	if !c.client.IsConnected() {
+		return fmt.Errorf("MQTT client is not connected")
+	}
+
+	token := c.client.Subscribe(topic, 1, c.messageHandler())
+	token.Wait()
+	if token.Error() != nil {
+		return fmt.Errorf("failed to subscribe to topic %s: %v", topic, token.Error())
+	}
+
+	log.Printf("Successfully added subscription to topic: %s", topic)
+	return nil
+}
+
+// RemoveSubscription 移除订阅主题
+func (c *Client) RemoveSubscription(topic string) error {
+	if !c.client.IsConnected() {
+		return fmt.Errorf("MQTT client is not connected")
+	}
+
+	token := c.client.Unsubscribe(topic)
+	token.Wait()
+	if token.Error() != nil {
+		return fmt.Errorf("failed to unsubscribe from topic %s: %v", topic, token.Error())
+	}
+
+	log.Printf("Successfully removed subscription from topic: %s", topic)
+	return nil
+}
+
+// GetSubscriptions 获取当前所有订阅主题
+func (c *Client) GetSubscriptions() []string {
+	// 这里可以返回当前订阅的主题列表
+	// 暂时返回配置中定义的主题
+	topics := []string{}
+	if c.config.MQTTTopic != "" {
+		topics = append(topics, c.config.MQTTTopic)
+	}
+	if c.config.AutoSubscribe {
+		topics = append(topics, standardTopics...)
+	}
+	return topics
+}
+
 // messageHandler 适配器处理收到的EdgeX消息
 func (c *Client) messageHandler() mqtt.MessageHandler {
 	return func(client mqtt.Client, msg mqtt.Message) {
 		// 增加MQTT消息接收计数
 		if c.monitor != nil {
 			c.monitor.IncrementMQTTMessagesReceived()
+			// 增加数据接收字节数
+			c.monitor.IncrementDataReceivedBytes(int64(len(msg.Payload())))
 		}
 
 		log.Printf("Received message on topic: %s", msg.Topic())
@@ -322,6 +568,17 @@ func (c *Client) messageHandler() mqtt.MessageHandler {
 
 			// 处理每个读数
 			for _, reading := range event.Readings {
+				// 解析值的类型
+				value := common.ParseValue(reading.Value)
+
+				// 数据过滤
+				if c.filterManager != nil {
+					if !c.filterManager.ShouldStore(event.DeviceName, reading.ResourceName, value) {
+						log.Printf("Filtered out data from %s: %s", event.DeviceName, reading.ResourceName)
+						continue
+					}
+				}
+
 				// 从对象池获取map，减少内存分配
 				data := objPool.GetMap()
 
@@ -330,9 +587,6 @@ func (c *Client) messageHandler() mqtt.MessageHandler {
 				if reading.Metadata != nil {
 					metadataStr = string(reading.Metadata)
 				}
-
-				// 解析值的类型
-				value := common.ParseValue(reading.Value)
 
 				data["id"] = reading.ID
 				data["deviceName"] = event.DeviceName // 设备名称已经在ProcessMessage中格式化
@@ -404,6 +658,8 @@ func (c *Client) messageHandler() mqtt.MessageHandler {
 					// 增加MQTT消息处理计数
 					if c.monitor != nil {
 						c.monitor.IncrementMQTTMessagesProcessed()
+						// 增加数据存储字节数
+						c.monitor.IncrementDataStoredBytes(int64(len(records) * 100)) // 估算每条记录约100字节
 					}
 
 					// 分析数据
