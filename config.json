@@ -2,7 +2,7 @@
   "db_path": "./data",
   "mqtt_broker": "tcp://localhost:1883",
   "mqtt_topic": "edgex/events/#",
-  "client_id": "sfsdb-edgex-adapter-20260422005815",
+  "client_id": "sfsdb-edgex-adapter-20260422165024",
   "http_port": "8081",
   "dev_config_path": "./devconfig",
   "auto_subscribe": true,
@@ -10,6 +10,8 @@
   "mqtt_ca_cert": "",
   "mqtt_client_cert": "",
   "mqtt_client_key": "",
+  "connection_timeout": 0,
+  "keep_alive": 0,
   "mqtt_username": "",
   "mqtt_password": "",
   "http_use_tls": false,
@@ -41,12 +43,15 @@
   "max_memory_mb": 0,
   "max_cpu_percent": 0,
   "resource_monitor_interval_seconds": 0,
+  "device_offline_threshold_seconds": 300,
+  "data_anomaly_threshold_percent": 50,
+  "data_trend_min_points": 5,
   "db_scenario": "edge",
   "enable_prometheus": false,
   "prometheus_path": "",
-  "enable_simulator": false,
-  "simulator_interval_min": 0,
-  "simulator_interval_max": 0,
+  "enable_simulator": true,
+  "simulator_interval_min": 1,
+  "simulator_interval_max": 3,
   "license_type": "community",
   "license_key": "",
   "enterprise_features": {
@@ -56,5 +61,6 @@
     "enable_advanced_analytics": false,
     "enable_big_screen_mode": false,
     "max_devices": 0
-  }
+  },
+  "custom_topics": null
 }

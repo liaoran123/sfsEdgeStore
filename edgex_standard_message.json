@@ -1,0 +1,19 @@
+{
+  "apiVersion": "v2",
+  "id": "a-unique-event-id",
+  "deviceName": "TempSensor-device001",
+  "profileName": "TempSensor",
+  "sourceName": "temperature",
+  "origin": 1682409269000000000,
+  "readings": [
+    {
+      "id": "a-unique-reading-id",
+      "origin": 1682409269000000000,
+      "deviceName": "TempSensor-device001",
+      "resourceName": "temperature",
+      "valueType": "Float64",
+      "value": "23.5",
+      "units": "°C"
+    }
+  ]
+}

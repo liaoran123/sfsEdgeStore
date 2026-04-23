@@ -16,23 +16,23 @@ import (
 
 // ResourceUsage 资源使用情况
 type ResourceUsage struct {
-	MemoryMB      float64 `json:"memory_mb"`
-	CPUPercent    float64 `json:"cpu_percent"`
-	Goroutines    int     `json:"goroutines"`
-	Timestamp     int64   `json:"timestamp"`
-	MemoryLimitMB float64 `json:"memory_limit_mb"`
+	MemoryMB        float64 `json:"memory_mb"`
+	CPUPercent      float64 `json:"cpu_percent"`
+	Goroutines      int     `json:"goroutines"`
+	Timestamp       int64   `json:"timestamp"`
+	MemoryLimitMB   float64 `json:"memory_limit_mb"`
 	CPULimitPercent float64 `json:"cpu_limit_percent"`
 }
 
 // ResourceMonitor 资源监控器
 type ResourceMonitor struct {
-	config         *config.Config
-	monitor        MonitorInterface
-	isRunning      bool
-	stopChan       chan struct{}
-	mutex          sync.Mutex
-	lastUsage      ResourceUsage
-	alertSent      map[string]bool
+	config    *config.Config
+	monitor   MonitorInterface
+	isRunning bool
+	stopChan  chan struct{}
+	mutex     sync.Mutex
+	lastUsage ResourceUsage
+	alertSent map[string]bool
 }
 
 // MonitorInterface 监控接口
@@ -87,7 +87,11 @@ func (rm *ResourceMonitor) GetCurrentUsage() ResourceUsage {
 
 // monitorLoop 监控循环
 func (rm *ResourceMonitor) monitorLoop() {
-	interval := time.Duration(rm.config.ResourceMonitorInterval) * time.Second
+	intervalSeconds := rm.config.ResourceMonitorInterval
+	if intervalSeconds <= 0 {
+		intervalSeconds = 10 // 默认10秒
+	}
+	interval := time.Duration(intervalSeconds) * time.Second
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -127,14 +131,18 @@ func (rm *ResourceMonitor) collectUsage() ResourceUsage {
 	cpuPercent := rm.getCPUPercent()
 
 	return ResourceUsage{
-		MemoryMB:       memoryMB,
-		CPUPercent:     cpuPercent,
-		Goroutines:     runtime.NumGoroutine(),
-		Timestamp:      time.Now().Unix(),
-		MemoryLimitMB:  rm.config.MaxMemoryMB,
+		MemoryMB:        memoryMB,
+		CPUPercent:      cpuPercent,
+		Goroutines:      runtime.NumGoroutine(),
+		Timestamp:       time.Now().Unix(),
+		MemoryLimitMB:   rm.config.MaxMemoryMB,
 		CPULimitPercent: rm.config.MaxCPUPercent,
 	}
 }
+
+// 全局变量，用于存储上一次的CPU使用率
+var lastCPUPercent float64
+var cpuInitialized bool
 
 // getCPUPercent 获取 CPU 使用率
 func (rm *ResourceMonitor) getCPUPercent() float64 {
@@ -142,6 +150,15 @@ func (rm *ResourceMonitor) getCPUPercent() float64 {
 	if err != nil {
 		return 0
 	}
+	
+	// 限制CPU使用率在合理范围内
+	if percent > 100 {
+		percent = 100
+	}
+	if percent < 0 {
+		percent = 0
+	}
+	
 	return percent
 }
 
@@ -154,86 +171,76 @@ func cpu_percent() (float64, error) {
 		return 0, err
 	}
 
+	// 第一次调用时阻塞采样
+	if !cpuInitialized {
+		_, err = proc.CPUPercent()
+		if err != nil {
+			return 0, err
+		}
+		cpuInitialized = true
+		time.Sleep(100 * time.Millisecond) // 短暂等待确保采样
+	}
+
 	// 获取进程 CPU 使用率
 	cpuPercent, err := proc.CPUPercent()
 	if err != nil {
 		return 0, err
 	}
 
+	// 存储上次值
+	lastCPUPercent = cpuPercent
 	return cpuPercent, nil
 }
 
 // checkMemory 检查内存使用
 func (rm *ResourceMonitor) checkMemory(usage ResourceUsage) {
 	if usage.MemoryMB > usage.MemoryLimitMB {
-		alertKey := "memory_over_limit"
-		if !rm.alertSent[alertKey] {
-			message := fmt.Sprintf("Memory usage exceeds limit: %.2f MB > %.2f MB",
-				usage.MemoryMB, usage.MemoryLimitMB)
-			log.Printf("[WARNING] %s", message)
-			
-			if rm.monitor != nil {
-				rm.monitor.RecordError("memory_over_limit", message)
-			}
-			
-			rm.alertSent[alertKey] = true
-			
-			// 尝试释放内存
-			rm.tryFreeMemory()
-		}
-	} else {
-		delete(rm.alertSent, "memory_over_limit")
+		message := fmt.Sprintf("Memory usage exceeds limit: %.2f MB > %.2f MB",
+			usage.MemoryMB, usage.MemoryLimitMB)
+		log.Printf("[WARNING] %s", message)
+
+		// 尝试释放内存
+		rm.tryFreeMemory()
 	}
 }
 
 // checkCPU 检查 CPU 使用
 func (rm *ResourceMonitor) checkCPU(usage ResourceUsage) {
 	if usage.CPUPercent > usage.CPULimitPercent {
-		alertKey := "cpu_over_limit"
-		if !rm.alertSent[alertKey] {
-			message := fmt.Sprintf("CPU usage exceeds limit: %.2f%% > %.2f%%",
-				usage.CPUPercent, usage.CPULimitPercent)
-			log.Printf("[WARNING] %s", message)
-			
-			if rm.monitor != nil {
-				rm.monitor.RecordError("cpu_over_limit", message)
-			}
-			
-			rm.alertSent[alertKey] = true
-			
-			// 尝试调整资源使用
-			rm.adjustResourceUsage()
-		}
-	} else {
-		delete(rm.alertSent, "cpu_over_limit")
+		message := fmt.Sprintf("CPU usage exceeds limit: %.2f%% > %.2f%%",
+			usage.CPUPercent, usage.CPULimitPercent)
+		log.Printf("[WARNING] %s", message)
+
+		// 尝试调整资源使用
+		rm.adjustResourceUsage()
 	}
 }
 
 // tryFreeMemory 尝试释放内存
 func (rm *ResourceMonitor) tryFreeMemory() {
 	log.Println("Attempting to free memory...")
-	
+
 	// 触发 GC
 	runtime.GC()
-	
+
 	// 再次触发 GC 以释放更多内存
 	runtime.GC()
-	
+
 	// 释放到操作系统
 	debug.FreeOSMemory()
-	
+
 	log.Println("Memory cleanup completed")
 }
 
 // adjustResourceUsage 调整资源使用
 func (rm *ResourceMonitor) adjustResourceUsage() {
 	log.Println("Adjusting resource usage...")
-	
+
 	// 这里可以实现资源使用调整逻辑
 	// 例如：
 	// - 减少批量处理大小
 	// - 降低并发数
 	// - 调整同步间隔
-	
+
 	log.Println("Resource usage adjustment completed")
 }

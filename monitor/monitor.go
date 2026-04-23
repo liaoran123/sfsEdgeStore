@@ -4,14 +4,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"sfsEdgeStore/alert"
+	sfsAlert "sfsEdgeStore/alert"
 	"sfsEdgeStore/common"
+	"sfsEdgeStore/config"
+	"sfsEdgeStore/device"
 
 	"github.com/liaoran123/sfsDb/management/monitor"
 )
@@ -27,6 +32,229 @@ type Monitor struct {
 	lastCollectTime time.Time               // 上次收集时间
 	mutex           sync.Mutex              // 保护alerts切片的互斥锁
 	notifier        *alert.Notifier         // 告警通知器
+	deviceStatus    map[string]DeviceStatus // 设备状态映射
+	deviceMutex     sync.Mutex              // 保护deviceStatus的互斥锁
+	config          *config.Config          // 配置
+	profileManager  *device.ProfileManager  // 设备配置管理器
+	// 告警去重机制
+	alertDedupe map[string]time.Time // 告警去重映射 (key: type+deviceName)
+	dedupeMutex sync.Mutex           // 保护去重映射
+}
+
+// 告警分组信息
+type AlertGroup struct {
+	Type        string    // 告警类型
+	Message     string    // 告警消息
+	DeviceCount int       // 受影响设备数
+	Devices     []string  // 受影响设备列表
+	LastTime    time.Time // 最新告警时间
+	Severity    string    // 严重级别
+	Count       int       // 告警总数
+}
+
+// GetAlertGroups 获取分组后的告警列表
+func (m *Monitor) GetAlertGroups() []AlertGroup {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	// 按告警类型分组
+	groupMap := make(map[string]*AlertGroup)
+
+	for i := len(m.alerts) - 1; i >= 0; i-- {
+		alert := m.alerts[i]
+
+		// 跳过系统资源相关的告警
+		if sfsAlert.IsSystemResourceAlert(alert.Type) {
+			continue
+		}
+
+		// 直接使用 alert.Type 作为分组键
+		key := alert.Type
+
+		if group, exists := groupMap[key]; exists {
+			deviceName := extractDeviceNameFromMessage(alert.Message)
+			if deviceName != "" && deviceName != "未知设备" {
+				found := false
+				for _, d := range group.Devices {
+					if d == deviceName {
+						found = true
+						break
+					}
+				}
+				if !found && len(group.Devices) < 10 {
+					group.Devices = append(group.Devices, deviceName)
+					group.DeviceCount = len(group.Devices)
+				}
+			}
+			group.Count++
+			if alert.Timestamp.After(group.LastTime) {
+				group.LastTime = alert.Timestamp
+			}
+		} else {
+			deviceName := extractDeviceNameFromMessage(alert.Message)
+			deviceType := extractDeviceTypeFromMessage(alert.Message)
+
+			devices := []string{}
+			if deviceName != "" {
+				devices = []string{deviceName}
+			}
+
+			groupMap[key] = &AlertGroup{
+				Type:        alert.Type,
+				Message:     generateGroupMessage(alert.Type, deviceType),
+				DeviceCount: len(devices),
+				Devices:     devices,
+				LastTime:    alert.Timestamp,
+				Severity:    alert.Severity,
+				Count:       1,
+			}
+		}
+	}
+
+	// 转换为切片并按时间排序
+	groups := make([]AlertGroup, 0, len(groupMap))
+	for _, g := range groupMap {
+		groups = append(groups, *g)
+	}
+
+	// 按最后时间排序（最新的在前）
+	for i := 0; i < len(groups)-1; i++ {
+		for j := i + 1; j < len(groups); j++ {
+			if groups[j].LastTime.After(groups[i].LastTime) {
+				groups[i], groups[j] = groups[j], groups[i]
+			}
+		}
+	}
+
+	return groups
+}
+
+// extractDeviceNameFromMessage 从消息中提取设备名称
+func extractDeviceNameFromMessage(message string) string {
+	// 处理多种消息格式：
+	// 格式1: "Device temperature-sensor-001 temperature over limit: 55.00 > 50.00"
+	// 格式2: "Device temperature over limit: temperature-sensor-001 - Device temperature-sensor-001 temperature over limit: 57.35 > 50.00"
+
+	// 首先尝试格式1
+	if len(message) >= 8 && message[:8] == "Device " {
+		remainder := message[8:]
+		for i, c := range remainder {
+			if c == ' ' {
+				if i > 0 {
+					return remainder[:i]
+				}
+				break
+			}
+		}
+	}
+
+	// 尝试格式2
+	if len(message) >= 15 && message[:15] == "Device temperature" {
+		// 查找 ": " 分隔符
+		colonIndex := -1
+		for i, c := range message {
+			if c == ':' {
+				colonIndex = i
+				break
+			}
+		}
+
+		if colonIndex != -1 && colonIndex+2 < len(message) {
+			remainder := message[colonIndex+2:]
+			// 查找 " - " 分隔符
+			dashIndex := -1
+			for i := 0; i < len(remainder)-2; i++ {
+				if remainder[i:i+3] == " - " {
+					dashIndex = i
+					break
+				}
+			}
+
+			if dashIndex != -1 {
+				return remainder[:dashIndex]
+			}
+		}
+	}
+
+	// 尝试其他可能的格式，如 "Device data anomaly: value changed from 1258.85 to 623.14"
+	if len(message) >= 13 && message[:13] == "Device data anomaly" {
+		// 这种格式可能不包含设备名称，返回空
+		return ""
+	}
+
+	return ""
+}
+
+// extractDeviceTypeFromMessage 从消息中提取设备类型
+func extractDeviceTypeFromMessage(message string) string {
+	deviceName := extractDeviceNameFromMessage(message)
+	if deviceName == "" {
+		return ""
+	}
+	// 移除编号，如 temperature-sensor-001 -> temperature-sensor
+	for i := len(deviceName) - 1; i >= 0; i-- {
+		if deviceName[i] == '-' {
+			return deviceName[:i]
+		}
+	}
+	return deviceName
+}
+
+// 告警类型到消息模板的映射
+var alertMessageTemplates = map[string]string{
+	"device_temperature_over_limit": "%s 温度超限",
+	"device_humidity_over_limit":    "%s 湿度超限",
+	"device_data_anomaly":           "%s 数据异常",
+	"http_requests":                 "HTTP请求频率过高",
+	"errors":                        "错误率过高",
+	"database_operations":           "数据库操作频率过高",
+	"device_offline":                "设备离线",
+	"device_online":                 "设备上线",
+	"device_data_trend":             "%s 数据趋势异常",
+}
+
+// 生成分组消息
+func generateGroupMessage(alertType, deviceType string) string {
+	if template, ok := alertMessageTemplates[alertType]; ok {
+		deviceTypeName := getDeviceTypeName(deviceType)
+		// 检查模板是否包含 %s 占位符
+		if strings.Contains(template, "%s") {
+			return fmt.Sprintf(template, deviceTypeName)
+		} else {
+			return template
+		}
+	}
+	return fmt.Sprintf("%s 告警", getDeviceTypeName(deviceType))
+}
+
+// 获取设备类型中文名
+func getDeviceTypeName(deviceType string) string {
+	switch deviceType {
+	case "temperature-sensor":
+		return "温度传感器"
+	case "pressure-sensor":
+		return "压力传感器"
+	case "vibration-sensor":
+		return "振动传感器"
+	case "power-meter":
+		return "功率计"
+	case "flow-meter":
+		return "流量计"
+	default:
+		return deviceType
+	}
+}
+
+// DeviceStatus 设备状态
+type DeviceStatus struct {
+	LastActive     time.Time // 最后活跃时间
+	IsOnline       bool      // 是否在线
+	LastAlertTime  time.Time // 最后告警时间
+	DataCount      int64     // 数据计数
+	LastDataValue  float64   // 最后数据值
+	LastDataTime   time.Time // 最后数据时间
+	DataHistory    []float64 // 数据历史记录（用于异常检测）
+	LastDataChange float64   // 最后数据变化量
 }
 
 // InternalMetrics 内部监控指标（使用atomic类型）
@@ -89,7 +317,18 @@ type AlertThresholds struct {
 }
 
 // NewMonitor 创建监控管理器
-func NewMonitor() *Monitor {
+func NewMonitor(cfg *config.Config) *Monitor {
+	if cfg == nil {
+		cfg = config.GetConfigManager().GetConfig()
+	}
+
+	// 初始化设备配置管理器
+	profileManager := device.GetProfileManager()
+	// 加载设备配置文件
+	if err := profileManager.LoadProfiles("device_profiles"); err != nil {
+		log.Printf("Failed to load device profiles: %v", err)
+	}
+
 	return &Monitor{
 		monitorManager: monitor.NewMonitorManager(),
 		metrics: InternalMetrics{
@@ -104,8 +343,17 @@ func NewMonitor() *Monitor {
 			ErrorsPerMinute:             10,   // 默认每分钟10个错误
 			DatabaseOperationsPerMinute: 5000, // 默认每分钟5000个数据库操作
 		},
-		alerts:          []common.Alert{},
+		alerts: []common.Alert{},
+		lastMetrics: InternalMetrics{
+			System: SystemMetrics{
+				Goroutines: runtime.NumGoroutine(),
+			},
+			Application: InternalApplicationMetrics{},
+		},
 		lastCollectTime: time.Now(),
+		deviceStatus:    make(map[string]DeviceStatus),
+		config:          cfg,
+		profileManager:  profileManager,
 	}
 }
 
@@ -223,6 +471,263 @@ func (m *Monitor) IsMQTTConnected() bool {
 	return m.metrics.Application.MQTTConnectionStatus.Load()
 }
 
+// UpdateDeviceStatus 更新设备状态
+func (m *Monitor) UpdateDeviceStatus(deviceName, reading string, value float64) {
+	m.deviceMutex.Lock()
+	defer m.deviceMutex.Unlock()
+
+	now := time.Now()
+	status, exists := m.deviceStatus[deviceName]
+
+	if !exists {
+		status = DeviceStatus{
+			LastActive:    now,
+			IsOnline:      true,
+			LastAlertTime: time.Time{},
+			DataCount:     0,
+			DataHistory:   make([]float64, 0, 10),
+		}
+	}
+
+	// 计算数据变化量
+	var dataChange float64
+	if status.DataCount > 0 && status.LastDataValue != 0 {
+		dataChange = math.Abs(value - status.LastDataValue)
+		status.LastDataChange = dataChange
+	}
+
+	// 更新数据历史记录（保持最近10个数据点）
+	status.DataHistory = append(status.DataHistory, value)
+	if len(status.DataHistory) > 10 {
+		status.DataHistory = status.DataHistory[len(status.DataHistory)-10:]
+	}
+
+	// 简单的异常检测
+	if status.DataCount > 2 {
+		// 获取数据异常检测阈值
+		dataAnomalyThreshold := 50.0 // 默认50%
+		dataTrendMinPoints := 5      // 默认5个点
+
+		if m.config != nil {
+			if m.config.DataAnomalyThreshold > 0 {
+				dataAnomalyThreshold = float64(m.config.DataAnomalyThreshold)
+			}
+			if m.config.DataTrendMinPoints > 0 {
+				dataTrendMinPoints = m.config.DataTrendMinPoints
+			}
+		}
+
+		// 检测数据突变
+		if status.LastDataValue != 0 && dataChange/status.LastDataValue > dataAnomalyThreshold/100 {
+			// 触发数据异常告警
+			alert := common.Alert{
+				Type:      "device_data_anomaly",
+				Message:   fmt.Sprintf("Device %s data anomaly: value changed from %.2f to %.2f", deviceName, status.LastDataValue, value),
+				Severity:  "warning",
+				Timestamp: now,
+				Resolved:  false,
+			}
+
+			m.mutex.Lock()
+			m.alerts = append(m.alerts, alert)
+			m.mutex.Unlock()
+
+			log.Printf("Device data anomaly detected: %s - %s", deviceName, alert.Message)
+
+			// 发送告警通知
+			if m.notifier != nil {
+				m.notifier.SendAlert(alert)
+			}
+		}
+
+		// 检测数据趋势异常
+		if len(status.DataHistory) >= dataTrendMinPoints {
+			isIncreasing := true
+			isDecreasing := true
+
+			for i := 1; i < len(status.DataHistory); i++ {
+				if status.DataHistory[i] <= status.DataHistory[i-1] {
+					isIncreasing = false
+				}
+				if status.DataHistory[i] >= status.DataHistory[i-1] {
+					isDecreasing = false
+				}
+			}
+
+			if isIncreasing || isDecreasing {
+				trend := "increasing"
+				if isDecreasing {
+					trend = "decreasing"
+				}
+
+				alert := common.Alert{
+					Type:      "device_data_trend",
+					Message:   fmt.Sprintf("Device %s data trend: continuous %s for %d consecutive readings", deviceName, trend, dataTrendMinPoints),
+					Severity:  "info",
+					Timestamp: now,
+					Resolved:  false,
+				}
+
+				m.mutex.Lock()
+				m.alerts = append(m.alerts, alert)
+				m.mutex.Unlock()
+
+				log.Printf("Device data trend detected: %s - %s", deviceName, alert.Message)
+
+				// 发送告警通知
+				if m.notifier != nil {
+					m.notifier.SendAlert(alert)
+				}
+			}
+		}
+	}
+
+	// 检查设备配置文件中的阈值
+	if m.profileManager != nil {
+		// 根据设备名称自动查找对应的设备配置
+		profileName, found := m.profileManager.FindProfileByDeviceName(deviceName)
+		if !found {
+			// 如果没有找到对应的设备配置，跳过阈值检查
+			// 但仍然更新设备状态
+			status.LastActive = now
+			status.IsOnline = true
+			status.DataCount++
+			status.LastDataValue = value
+			status.LastDataTime = now
+
+			m.deviceStatus[deviceName] = status
+			return
+		}
+
+		// 检查温度阈值
+		if threshold, exists := m.profileManager.GetResourceThreshold(profileName, "Temperature"); exists {
+			if value > threshold {
+				// 触发温度超限告警
+				alert := common.Alert{
+					Type:      "device_temperature_over_limit",
+					Message:   fmt.Sprintf("Device %s temperature over limit: %.2f > %.2f", deviceName, value, threshold),
+					Severity:  "critical",
+					Timestamp: now,
+					Resolved:  false,
+				}
+
+				m.mutex.Lock()
+				m.alerts = append(m.alerts, alert)
+				m.mutex.Unlock()
+
+				log.Printf("Device temperature over limit: %s - %s", deviceName, alert.Message)
+
+				// 发送告警通知
+				if m.notifier != nil {
+					m.notifier.SendAlert(alert)
+				}
+			}
+		}
+
+		// 检查湿度阈值
+		if threshold, exists := m.profileManager.GetResourceThreshold(profileName, "Humidity"); exists {
+			if value > threshold {
+				// 触发湿度超限告警
+				alert := common.Alert{
+					Type:      "device_humidity_over_limit",
+					Message:   fmt.Sprintf("Device %s humidity over limit: %.2f > %.2f", deviceName, value, threshold),
+					Severity:  "warning",
+					Timestamp: now,
+					Resolved:  false,
+				}
+
+				m.mutex.Lock()
+				m.alerts = append(m.alerts, alert)
+				m.mutex.Unlock()
+
+				log.Printf("Device humidity over limit: %s - %s", deviceName, alert.Message)
+
+				// 发送告警通知
+				if m.notifier != nil {
+					m.notifier.SendAlert(alert)
+				}
+			}
+		}
+	}
+
+	status.LastActive = now
+	status.IsOnline = true
+	status.DataCount++
+	status.LastDataValue = value
+	status.LastDataTime = now
+
+	m.deviceStatus[deviceName] = status
+}
+
+// CheckDeviceStatus 检查设备状态
+func (m *Monitor) CheckDeviceStatus() []common.Alert {
+	var newAlerts []common.Alert
+	now := time.Now()
+
+	// 获取离线检测阈值
+	offlineThreshold := 300 // 默认5分钟
+	if m.config != nil && m.config.DeviceOfflineThreshold > 0 {
+		offlineThreshold = m.config.DeviceOfflineThreshold
+	}
+
+	m.deviceMutex.Lock()
+	defer m.deviceMutex.Unlock()
+
+	for deviceName, status := range m.deviceStatus {
+		// 检查设备是否离线
+		if now.Sub(status.LastActive) > time.Duration(offlineThreshold)*time.Second && status.IsOnline {
+			// 检查是否已经告警过（避免重复告警）
+			if now.Sub(status.LastAlertTime) > 10*time.Minute {
+				alert := common.Alert{
+					Type:      "device_offline",
+					Message:   fmt.Sprintf("Device %s is offline", deviceName),
+					Severity:  "warning",
+					Timestamp: now,
+					Resolved:  false,
+				}
+				newAlerts = append(newAlerts, alert)
+
+				// 更新设备状态和告警时间
+				status.IsOnline = false
+				status.LastAlertTime = now
+				m.deviceStatus[deviceName] = status
+			}
+		}
+
+		// 检查设备是否恢复在线
+		if now.Sub(status.LastActive) < time.Duration(offlineThreshold)*time.Second && !status.IsOnline {
+			alert := common.Alert{
+				Type:      "device_online",
+				Message:   fmt.Sprintf("Device %s is back online", deviceName),
+				Severity:  "info",
+				Timestamp: now,
+				Resolved:  false,
+			}
+			newAlerts = append(newAlerts, alert)
+
+			// 更新设备状态
+			status.IsOnline = true
+			m.deviceStatus[deviceName] = status
+		}
+	}
+
+	return newAlerts
+}
+
+// GetDeviceStatus 获取设备状态
+func (m *Monitor) GetDeviceStatus() map[string]DeviceStatus {
+	m.deviceMutex.Lock()
+	defer m.deviceMutex.Unlock()
+
+	// 创建副本以避免并发访问问题
+	statusCopy := make(map[string]DeviceStatus)
+	for k, v := range m.deviceStatus {
+		statusCopy[k] = v
+	}
+
+	return statusCopy
+}
+
 // RecordError 记录错误并触发告警
 func (m *Monitor) RecordError(errorType, message string) {
 	m.IncrementErrors()
@@ -267,7 +772,7 @@ func (m *Monitor) CheckAlerts() []common.Alert {
 
 	// 计算时间差（分钟）
 	timeDiff := time.Since(m.lastCollectTime).Minutes()
-	if timeDiff == 0 {
+	if timeDiff < 1 {
 		timeDiff = 1 // 避免除以零
 	}
 
@@ -319,9 +824,18 @@ func (m *Monitor) CheckAlerts() []common.Alert {
 		})
 	}
 
+	// 检查设备状态告警
+	deviceAlerts := m.CheckDeviceStatus()
+	newAlerts = append(newAlerts, deviceAlerts...)
+
 	// 添加新告警（加锁保护）
 	m.mutex.Lock()
 	m.alerts = append(m.alerts, newAlerts...)
+
+	// 限制告警列表大小，防止内存泄漏（最多保留10000条）
+	if len(m.alerts) > 10000 {
+		m.alerts = m.alerts[len(m.alerts)-10000:]
+	}
 
 	// 更新上次收集的指标值（逐个存储，不复制整个结构体）
 	m.lastMetrics.Application.MQTTMessagesReceived.Store(m.metrics.Application.MQTTMessagesReceived.Load())
@@ -355,6 +869,7 @@ func (m *Monitor) RegisterHandlers() {
 	http.HandleFunc("/metrics", m.handleMetrics)
 	http.HandleFunc("/health", m.handleHealth)
 	http.HandleFunc("/alerts", m.handleAlerts)
+	http.HandleFunc("/device-status", m.handleDeviceStatus)
 }
 
 // handleMetrics 处理指标请求
@@ -399,6 +914,41 @@ func (m *Monitor) handleAlerts(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(alerts); err != nil {
 		log.Printf("Error encoding alerts: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handleAlertGroups 处理分组告警请求
+func (m *Monitor) handleAlertGroups(w http.ResponseWriter, r *http.Request) {
+	// 检查新告警
+	m.CheckAlerts()
+
+	// 获取分组后的告警
+	groups := m.GetAlertGroups()
+
+	// 调试日志
+	log.Printf("AlertGroups: %d groups", len(groups))
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{"status": "success", "groups": groups}); err != nil {
+		log.Printf("Error encoding alert groups: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handleDeviceStatus 处理设备状态请求
+func (m *Monitor) handleDeviceStatus(w http.ResponseWriter, r *http.Request) {
+	// 检查设备状态
+	m.CheckDeviceStatus()
+
+	// 获取设备状态
+	deviceStatus := m.GetDeviceStatus()
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(deviceStatus); err != nil {
+		log.Printf("Error encoding device status: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}

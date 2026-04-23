@@ -9,11 +9,14 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"sfsEdgeStore/analyzer"
-	"sfsEdgeStore/broadcast"
+	"sfsEdgeStore/common"
 	"sfsEdgeStore/config"
+	"sfsEdgeStore/core/database"
+	"sfsEdgeStore/core/edgex"
 	"sfsEdgeStore/filter"
 	"sfsEdgeStore/monitor"
 	"sfsEdgeStore/queue"
@@ -34,7 +37,6 @@ type Client struct {
 	batchInterval     time.Duration
 	lastBatchTime     time.Time
 	registeredDevices map[string]bool // 已注册设备集合
-	broadcaster       broadcast.Broadcaster
 }
 
 // 标准EdgeX主题
@@ -45,7 +47,7 @@ var standardTopics = []string{
 }
 
 // NewClient 创建新的MQTT客户端
-func NewClient(cfg *config.Config, dataQueue *queue.Queue, monitor *monitor.Monitor, analyzer *analyzer.Analyzer, broadcaster broadcast.Broadcaster) (*Client, error) {
+func NewClient(cfg *config.Config, dataQueue *queue.Queue, monitor *monitor.Monitor, analyzer *analyzer.Analyzer) (*Client, error) {
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(cfg.MQTTBroker) // 连接到EdgeX的MQTT broker
 	opts.SetClientID(cfg.ClientID)
@@ -83,7 +85,6 @@ func NewClient(cfg *config.Config, dataQueue *queue.Queue, monitor *monitor.Moni
 		batchInterval:     5 * time.Second, // 默认批量间隔
 		lastBatchTime:     time.Now(),
 		registeredDevices: make(map[string]bool),
-		broadcaster:       broadcaster,
 	}
 
 	// 添加 TLS 支持
@@ -530,4 +531,207 @@ func (c *Client) GetSubscriptions() []string {
 		topics = append(topics, standardTopics...)
 	}
 	return topics
+}
+
+// messageHandler 适配器处理收到的EdgeX消息
+/*
+- messageHandler 函数是通过 MQTT 客户端订阅主题时设置的回调函数触发的，用于处理收到的EdgeX消息
+- subscribeTopics 函数中，MQTT 客户端会订阅指定的主题
+- 订阅时，会调用 mqttClient.Subscribe 方法，并将 c.messageHandler() 作为回调函数传入
+*/
+func (c *Client) messageHandler() mqtt.MessageHandler {
+	return func(client mqtt.Client, msg mqtt.Message) {
+		// 增加MQTT消息接收计数
+		if c.monitor != nil {
+			c.monitor.IncrementMQTTMessagesReceived()
+			// 增加数据接收字节数
+			c.monitor.IncrementDataReceivedBytes(int64(len(msg.Payload())))
+		}
+
+		log.Printf("Received message on topic: %s", msg.Topic())
+
+		// 使用goroutine异步处理消息，避免阻塞MQTT消息接收
+		go func() {
+			// 使用edgex包处理消息
+			event, err := edgex.ProcessMessage(msg.Payload())
+			if err != nil {
+				log.Printf("Failed to process message: %v", err)
+				return
+			}
+
+			// 如果消息类型不是event，event会为nil
+			if event == nil {
+				return
+			}
+
+			// 检查设备数量限制（仅对免费用户生效）
+			if !c.isDeviceAllowed(event.DeviceName) {
+				log.Printf("Device limit reached, rejecting data from device: %s", event.DeviceName)
+				if c.monitor != nil {
+					c.monitor.RecordError("device_limit_reached", fmt.Sprintf("Device %s rejected due to limit", event.DeviceName))
+				}
+				return
+			}
+
+			// 预分配切片容量，避免动态扩容
+			records := make([]*map[string]any, 0, len(event.Readings))
+
+			// 处理每个读数
+			for _, reading := range event.Readings {
+				// 解析值的类型
+				value := common.ParseValue(reading.Value)
+
+				// 更新设备状态
+				if c.monitor != nil {
+					// 尝试将值转换为float64用于监控
+					floatValue := 0.0
+					switch v := value.(type) {
+					case float64:
+						floatValue = v
+					case int:
+						floatValue = float64(v)
+					case int64:
+						floatValue = float64(v)
+					}
+					c.monitor.UpdateDeviceStatus(event.DeviceName, reading.ResourceName, floatValue)
+				}
+
+				// 数据过滤
+				if c.filterManager != nil {
+					if !c.filterManager.ShouldStore(event.DeviceName, reading.ResourceName, value) {
+						log.Printf("Filtered out data from %s: %s", event.DeviceName, reading.ResourceName)
+						continue
+					}
+				}
+
+				// 从对象池获取map，减少内存分配
+				data := objPool.GetMap()
+
+				// 准备数据
+				metadataStr := ""
+				if reading.Metadata != nil {
+					metadataStr = string(reading.Metadata)
+				}
+
+				data["id"] = reading.ID
+				data["deviceName"] = event.DeviceName // 设备名称已经在ProcessMessage中格式化
+				data["reading"] = reading.ResourceName
+				data["value"] = value
+				data["valueType"] = reading.ValueType
+				data["baseType"] = reading.BaseType
+				data["timestamp"] = reading.Origin // 纳秒级时间戳，类型为 int64
+				data["metadata"] = metadataStr
+
+				records = append(records, &data)
+			}
+
+			// 批量存储到 sfsDb
+			if len(records) > 0 {
+				// 增加数据库操作计数
+				if c.monitor != nil {
+					c.monitor.IncrementDatabaseOperations()
+				}
+
+				// 使用重试机制插入数据
+				err := database.BatchInsertWithRetry(database.Table, records, 3, 2*time.Second)
+				if err != nil {
+					log.Printf("Failed to batch store data after retries: %v", err)
+
+					// 分析错误类型，针对边缘设备常见故障进行处理
+					errorMsg := err.Error()
+
+					// 边缘设备常见故障类型判断
+					if strings.Contains(errorMsg, "no space left") ||
+						strings.Contains(errorMsg, "disk full") ||
+						strings.Contains(errorMsg, "file system") ||
+						strings.Contains(errorMsg, "I/O error") {
+						// 磁盘空间不足或文件系统错误，属于致命错误，重试无效
+						log.Printf("Fatal storage error detected: %v", err)
+
+						// 触发监控告警
+						if c.monitor != nil {
+							c.monitor.RecordError("storage_error", errorMsg)
+						}
+					} else if strings.Contains(errorMsg, "lock") ||
+						strings.Contains(errorMsg, "busy") {
+						// 锁竞争或资源忙，短暂重试可能有效
+						log.Printf("Resource contention error detected: %v", err)
+						if c.monitor != nil {
+							c.monitor.RecordError("resource_contention", errorMsg)
+						}
+					} else {
+						// 其他错误
+						log.Printf("Other database error: %v", err)
+						if c.monitor != nil {
+							c.monitor.RecordError("database_error", errorMsg)
+						}
+					}
+
+					// 将数据加入队列，以便后续处理
+					if err := c.dataQueue.Enqueue(records); err != nil {
+						log.Printf("Failed to enqueue data: %v", err)
+					} else {
+						log.Printf("Enqueued %d readings for later processing", len(records))
+					}
+
+					// 归还map对象到池中
+					for _, data := range records {
+						objPool.PutMap(*data)
+					}
+				} else {
+					log.Printf("Batch stored %d readings from %s", len(records), event.DeviceName)
+					// 增加MQTT消息处理计数
+					if c.monitor != nil {
+						c.monitor.IncrementMQTTMessagesProcessed()
+						// 增加数据存储字节数
+						c.monitor.IncrementDataStoredBytes(int64(len(records) * 100)) // 估算每条记录约100字节
+					}
+
+					// 分析数据
+					if c.analyzer != nil && c.analyzer.IsEnabled() {
+						// 按reading分组分析数据
+						readingDataMap := make(map[string][]map[string]interface{})
+						for _, record := range records {
+							// 从记录中获取reading信息
+							readingName, ok := (*record)["reading"].(string)
+							if !ok {
+								continue
+							}
+							readingDataMap[readingName] = append(readingDataMap[readingName], *record)
+						}
+
+						// 对每个reading进行分析
+						for readingName, analysisData := range readingDataMap {
+							// 分析数据
+							results, alerts := c.analyzer.Analyze(analysisData, event.DeviceName, readingName)
+
+							// 处理分析结果
+							if len(results) > 0 {
+								log.Printf("Analysis completed for %s: %d results", readingName, len(results))
+								// 这里可以将分析结果存储或发送到其他系统
+							}
+
+							// 处理告警
+							if len(alerts) > 0 {
+								log.Printf("Detected %d alerts for %s", len(alerts), readingName)
+								// 这里可以将告警发送到监控系统或其他通知渠道
+								for _, alert := range alerts {
+									log.Printf("Alert: %s - %s - %s", alert.Severity, alert.Message, alert.Reading)
+									// 触发监控告警
+									if c.monitor != nil {
+										c.monitor.RecordError(alert.AlertType, alert.Message)
+									}
+								}
+							}
+						}
+					}
+
+					// 归还map对象到池中
+					for _, data := range records {
+						objPool.PutMap(*data)
+					}
+				}
+			}
+		}()
+	}
 }

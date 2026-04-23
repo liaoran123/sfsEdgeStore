@@ -1,0 +1,20 @@
+name: "PressureSensor"
+manufacturer: "Example Corp"
+model: "PS-200"
+deviceResources:
+  - name: "pressure"
+    properties:
+      valueType: "Float64"
+      minimum: 940.0
+      maximum: 1060.0
+      defaultValue: 1013.25
+    attributes:
+      units: "hPa"
+  - name: "temperature"
+    properties:
+      valueType: "Float32"
+      minimum: -20.0
+      maximum: 60.0
+      defaultValue: 25.0
+    attributes:
+      units: "Celsius"

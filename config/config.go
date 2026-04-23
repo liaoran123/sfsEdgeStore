@@ -40,6 +40,9 @@ type Config struct {
 	MQTTCACert     string `json:"mqtt_ca_cert" env:"EDGEX_MQTT_CA_CERT"`
 	MQTTClientCert string `json:"mqtt_client_cert" env:"EDGEX_MQTT_CLIENT_CERT"`
 	MQTTClientKey  string `json:"mqtt_client_key" env:"EDGEX_MQTT_CLIENT_KEY"`
+	// MQTT 连接配置
+	ConnectionTimeout int `json:"connection_timeout" env:"EDGEX_MQTT_CONNECTION_TIMEOUT"`
+	KeepAlive         int `json:"keep_alive" env:"EDGEX_MQTT_KEEP_ALIVE"`
 	// MQTT 认证
 	MQTTUsername string `json:"mqtt_username" env:"EDGEX_MQTT_USERNAME"`
 	MQTTPassword string `json:"mqtt_password" env:"EDGEX_MQTT_PASSWORD"`
@@ -78,6 +81,10 @@ type Config struct {
 	MaxMemoryMB              float64 `json:"max_memory_mb" env:"EDGEX_MAX_MEMORY_MB"`
 	MaxCPUPercent            float64 `json:"max_cpu_percent" env:"EDGEX_MAX_CPU_PERCENT"`
 	ResourceMonitorInterval  int     `json:"resource_monitor_interval_seconds" env:"EDGEX_RESOURCE_MONITOR_INTERVAL_SECONDS"`
+	// 设备异常监控配置
+	DeviceOfflineThreshold int `json:"device_offline_threshold_seconds" env:"EDGEX_DEVICE_OFFLINE_THRESHOLD_SECONDS"`
+	DataAnomalyThreshold   int `json:"data_anomaly_threshold_percent" env:"EDGEX_DATA_ANOMALY_THRESHOLD_PERCENT"`
+	DataTrendMinPoints     int `json:"data_trend_min_points" env:"EDGEX_DATA_TREND_MIN_POINTS"`
 	// 数据库场景配置
 	DBScenario string `json:"db_scenario" env:"EDGEX_DB_SCENARIO"`
 	// Prometheus 指标配置（可选，默认关闭）
@@ -91,9 +98,11 @@ type Config struct {
 	LicenseType        string             `json:"license_type" env:"EDGEX_LICENSE_TYPE"` // "community" | "business" | "enterprise"
 	LicenseKey         string             `json:"license_key" env:"EDGEX_LICENSE_KEY"`   // 许可证密钥
 	EnterpriseFeatures EnterpriseFeatures `json:"enterprise_features"`                   // 功能开关
+	// 自定义订阅主题
+	CustomTopics []string `json:"custom_topics"` // 自定义MQTT订阅主题
 }
 
-// EnterpriseFeatures 企业版功能开关
+// EnterpriseFeatures 企业版功能开关   授权方式变更，这个已经不需要。
 type EnterpriseFeatures struct {
 	EnableCloudSync         bool `json:"enable_cloud_sync"`         // 云端数据同步
 	EnableRemoteConfig      bool `json:"enable_remote_config"`      // 远程配置管理
@@ -259,10 +268,14 @@ func Load() (*Config, error) {
 		DataSyncInterval:      30,
 		DataSyncMaxRetryCount: 5,
 		// 资源使用监控默认值
-		EnableResourceMonitoring: true,
+		EnableResourceMonitoring: false,
 		MaxMemoryMB:              50, // 50MB 内存限制
 		MaxCPUPercent:            5,  // 5% CPU 限制
 		ResourceMonitorInterval:  10, // 每10秒检查一次
+		// 设备异常监控配置
+		DeviceOfflineThreshold: 300, // 设备离线检测阈值（秒）
+		DataAnomalyThreshold:   50,  // 数据突变检测阈值（百分比）
+		DataTrendMinPoints:     5,   // 数据趋势检测最小连续点数量
 		// 数据库场景默认值
 		DBScenario: ScenarioEdge, // 默认使用边缘场景
 		// Prometheus 指标默认值（默认关闭，避免性能影响）
@@ -270,8 +283,8 @@ func Load() (*Config, error) {
 		PrometheusPath:   "/metrics",
 		// 模拟器默认配置（默认关闭）
 		EnableSimulator:      false,
-		SimulatorIntervalMin: 2,
-		SimulatorIntervalMax: 5,
+		SimulatorIntervalMin: 5,
+		SimulatorIntervalMax: 10,
 		// 许可证配置默认值
 		LicenseType: "community", // 默认社区版
 		EnterpriseFeatures: EnterpriseFeatures{

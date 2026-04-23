@@ -318,7 +318,7 @@ func (bm *BackupManager) Restore(backupPath string) error {
 
 	// 打开备份文件作为源数据库
 	log.Println("Opening backup file as source database...")
-	backupDb, err := storage.NewLevelDBStore(actualBackupPath, nil)
+	backupDb, err := storage.GetDBManager().NewLevelDBStore(actualBackupPath, nil)
 	if err != nil {
 		log.Printf("Failed to open backup file as database: %v", err)
 		return fmt.Errorf("failed to open backup file as database: %v", err)
@@ -407,7 +407,7 @@ func (bm *BackupManager) ValidateBackup(backupPath string) (bool, error) {
 
 	// 尝试打开备份文件作为数据库
 	log.Println("Opening backup file as database for validation...")
-	backupDb, err := storage.NewLevelDBStore(actualBackupPath, nil)
+	backupDb, err := storage.GetDBManager().NewLevelDBStore(actualBackupPath, nil)
 	if err != nil {
 		log.Printf("Failed to open backup file as database: %v", err)
 		return false, fmt.Errorf("failed to open backup file as database: %v", err)

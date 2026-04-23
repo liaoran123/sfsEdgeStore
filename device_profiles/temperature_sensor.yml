@@ -1,0 +1,20 @@
+name: "TemperatureSensor"
+manufacturer: "Example Corp"
+model: "TS-100"
+deviceResources:
+  - name: "Temperature"
+    properties:
+      valueType: "Float32"
+      minimum: -10.0
+      maximum: 50.0
+      defaultValue: 25.0
+    attributes:
+      units: "Celsius"
+  - name: "Humidity"
+    properties:
+      valueType: "Float32"
+      minimum: 0.0
+      maximum: 90.0
+      defaultValue: 50.0
+    attributes:
+      units: "Percent"

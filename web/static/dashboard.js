@@ -1,111 +1,217 @@
 // sfsEdgeStore 本地监控 Dashboard JS
-let trendChart = null;
 let realtimeData = [];
 let historicalData = [];
 let selectedDevice = '';
 let selectedReading = '';
 let updateInterval = 5000; // 5秒刷新一次
+let ws;
 
-// 初始化
 document.addEventListener('DOMContentLoaded', function() {
-    initChart();
+    connectWebSocket();
     fetchData();
     fetchMetrics();
+    fetchLicenseInfo();
+    fetchDeviceStatus();
+    fetchDeviceAlerts();
     setInterval(fetchData, updateInterval);
     setInterval(fetchMetrics, updateInterval);
+    setInterval(fetchDeviceStatus, updateInterval);
+    setInterval(fetchDeviceAlerts, updateInterval);
 });
 
-// 初始化图表
-function initChart() {
-    trendChart = echarts.init(document.getElementById('trendChart'));
-    const option = {
-        backgroundColor: 'transparent',
-        tooltip: {
-            trigger: 'axis',
-            backgroundColor: '#16213e',
-            borderColor: '#0f3460',
-            textStyle: { color: '#eee' }
-        },
-        legend: {
-            data: ['数值'],
-            textStyle: { color: '#888' }
-        },
-        grid: {
-            left: '3%',
-            right: '4%',
-            bottom: '3%',
-            top: '15%',
-            containLabel: true
-        },
-        xAxis: {
-            type: 'category',
-            boundaryGap: false,
-            data: [],
-            axisLine: { lineStyle: { color: '#0f3460' } },
-            axisLabel: { color: '#888' }
-        },
-        yAxis: {
-            type: 'value',
-            axisLine: { lineStyle: { color: '#0f3460' } },
-            axisLabel: { color: '#888' },
-            splitLine: { lineStyle: { color: '#0f3460' } }
-        },
-        series: [{
-            name: '数值',
-            type: 'line',
-            smooth: true,
-            data: [],
-            lineStyle: { color: '#00d9ff', width: 2 },
-            areaStyle: {
-                color: {
-                    type: 'linear',
-                    x: 0, y: 0, x2: 0, y2: 1,
-                    colorStops: [
-                        { offset: 0, color: 'rgba(0, 217, 255, 0.3)' },
-                        { offset: 1, color: 'rgba(0, 217, 255, 0)' }
-                    ]
-                }
-            },
-            itemStyle: { color: '#00d9ff' }
-        }]
+// WebSocket 连接
+function connectWebSocket() {
+    ws = new WebSocket('ws://' + window.location.host + '/ws');
+    
+    ws.onopen = function() {
+        console.log('WebSocket connected');
     };
-    trendChart.setOption(option);
+    
+    ws.onmessage = function(event) {
+        try {
+            const data = JSON.parse(event.data);
+            handleWebSocketMessage(data);
+        } catch (e) {
+            console.error('Error parsing WebSocket message:', e);
+        }
+    };
+    
+    ws.onerror = function(error) {
+        console.error('WebSocket error:', error);
+    };
+    
+    ws.onclose = function() {
+        console.log('WebSocket disconnected, reconnecting...');
+        setTimeout(connectWebSocket, 3000);
+    };
 }
 
-// 获取实时数据
-async function fetchData() {
-    try {
-        const res = await fetch('/api/readings?limit=100');
-        const data = await res.json();
-        realtimeData = data.readings || [];
-        updateTable();
-        updateDeviceList();
-        updateDeviceSelect();
-        updateChart();
-        document.getElementById('dataCount').textContent = realtimeData.length + ' 条记录';
-        document.getElementById('connectionStatus').textContent = '已连接';
-        document.getElementById('connectionDot').className = 'status-dot online';
-    } catch (e) {
-        console.error('获取数据失败:', e);
-        document.getElementById('connectionStatus').textContent = '连接断开';
-        document.getElementById('connectionDot').className = 'status-dot offline';
+function handleWebSocketMessage(data) {
+    switch (data.type) {
+        case 'device_data':
+            updateRealtimeData(data.data);
+            break;
+        case 'alerts':
+            updateDeviceAlerts(data.data);
+            updateUnhealthyDevices([data.data]);
+            break;
+        case 'device_status':
+            updateDeviceStatus(data.data);
+            break;
     }
 }
 
-// 获取系统指标
+function updateRealtimeData(deviceData) {
+	const deviceName = deviceData.deviceName;
+	const records = deviceData.records;
+	
+	// 添加新数据到实时数据列表
+	records.forEach(record => {
+		realtimeData.unshift(record);
+		if (realtimeData.length > 21) {
+			realtimeData.pop();
+		}
+	});
+	
+	// 更新表格
+	updateTable();
+	// 更新波形图
+	updateWaveform();
+	
+	// 更新设备计数
+	const dataCountElement = document.getElementById('dataCount');
+	if (dataCountElement) {
+		dataCountElement.textContent = realtimeData.length + ' 条记录';
+	}
+}
+
+function updateDeviceAlerts(alertData) {
+    const deviceName = alertData.deviceName;
+    const alerts = alertData.alerts;
+    
+    // 直接刷新告警列表，不再使用 alertList 缓存
+    fetchDeviceAlerts();
+}
+
+function updateUnhealthyDevices(alertGroups) {
+    const container = document.getElementById('unhealthyDevices');
+    if (!container) return;
+    
+    // 收集有告警的设备
+    const unhealthyDeviceMap = new Map();
+    alertGroups.forEach(g => {
+        if (g.alerts && g.alerts.length > 0) {
+            g.alerts.forEach(alert => {
+                if (!unhealthyDeviceMap.has(g.deviceName)) {
+                    unhealthyDeviceMap.set(g.deviceName, []);
+                }
+                unhealthyDeviceMap.get(g.deviceName).push(alert.message || '告警');
+            });
+        }
+    });
+    
+    if (unhealthyDeviceMap.size === 0) {
+        container.innerHTML = '<div class="text-white-50 text-center">暂无问题设备</div>';
+        return;
+    }
+    
+    let html = '<div class="row g-2">';
+    unhealthyDeviceMap.forEach((alerts, name) => {
+        const badgeClass = 'bg-warning';
+        html += `<div class="col-12 col-sm-6 col-md-4">
+            <div class="p-2 rounded" style="background: rgba(255,107,107,0.15); border: 1px solid rgba(255,107,107,0.3);">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="text-danger fw-bold">${name}</span>
+                    <span class="badge ${badgeClass} text-dark">${alerts.length}</span>
+                </div>
+                <div class="text-white-50 small mt-1">${alerts.slice(0, 2).join(', ')}${alerts.length > 2 ? '...' : ''}</div>
+            </div>
+        </div>`;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function formatNumber(num) {
+    if (num === undefined || num === null || isNaN(num)) return '0';
+    if (num >= 1e9) return (num / 1e9).toFixed(1) + 'B';
+    if (num >= 1e6) return (num / 1e6).toFixed(1) + 'M';
+    if (num >= 1e3) return (num / 1e3).toFixed(1) + 'k';
+    return num.toString();
+}
+
+function formatBytes(bytes) {
+    if (bytes === undefined || bytes === null || isNaN(bytes)) return '0 B';
+    if (bytes >= 1e9) return (bytes / 1e9).toFixed(2) + ' GB';
+    if (bytes >= 1e6) return (bytes / 1e6).toFixed(2) + ' MB';
+    if (bytes >= 1e3) return (bytes / 1e3).toFixed(2) + ' KB';
+    return bytes + ' B';
+}
+
+async function fetchData() {
+    try {
+        const res = await fetch('/api/readings?limit=21');
+        const data = await res.json();
+        realtimeData = data.readings || [];
+        updateTable();
+        await updateDeviceList();
+        updateDeviceSelect();
+        updateWaveform();
+
+        const dataCountElement = document.getElementById('dataCount');
+        if (dataCountElement) {
+            dataCountElement.textContent = realtimeData.length + ' 条记录';
+        }
+
+        const connectionStatusElement = document.getElementById('connectionStatus');
+        const connectionDotElement = document.getElementById('connectionDot');
+        if (connectionStatusElement) {
+            connectionStatusElement.textContent = '已连接';
+        }
+        if (connectionDotElement) {
+            connectionDotElement.className = 'status-dot online';
+        }
+    } catch (e) {
+        console.error('获取数据失败:', e);
+        const connectionStatusElement = document.getElementById('connectionStatus');
+        const connectionDotElement = document.getElementById('connectionDot');
+        if (connectionStatusElement) {
+            connectionStatusElement.textContent = '连接断开';
+        }
+        if (connectionDotElement) {
+            connectionDotElement.className = 'status-dot offline';
+        }
+    }
+}
+
 async function fetchMetrics() {
     try {
         const res = await fetch('/metrics');
         const data = await res.json();
         if (data.application) {
-            document.getElementById('mqttReceived').textContent = formatNumber(data.application.mqtt_messages_received);
-            document.getElementById('mqttProcessed').textContent = formatNumber(data.application.mqtt_messages_processed);
-            document.getElementById('errorCount').textContent = formatNumber(data.application.errors);
+            const mqttReceivedElement = document.getElementById('mqttReceived');
+            if (mqttReceivedElement) {
+                mqttReceivedElement.textContent = formatNumber(data.application.mqtt_messages_received);
+            }
+            const mqttProcessedElement = document.getElementById('mqttProcessed');
+            if (mqttProcessedElement) {
+                mqttProcessedElement.textContent = formatNumber(data.application.mqtt_messages_processed);
+            }
+            const errorCountElement = document.getElementById('errorCount');
+            if (errorCountElement) {
+                errorCountElement.textContent = formatNumber(data.application.errors);
+            }
         }
         if (data.system) {
             const goroutines = data.system.goroutines || 0;
-            document.getElementById('goroutinesValue').textContent = goroutines;
-            document.getElementById('uptimeValue').textContent = formatUptime(data.system.uptime_seconds);
+            const goroutinesValueElement = document.getElementById('goroutinesValue');
+            if (goroutinesValueElement) {
+                goroutinesValueElement.textContent = formatNumber(goroutines);
+            }
+            const uptimeValueElement = document.getElementById('uptimeValue');
+            if (uptimeValueElement) {
+                uptimeValueElement.textContent = formatUptime(data.system.uptime_seconds);
+            }
             const memUsage = data.system.memory_usage || 0;
             const cpuUsage = data.system.cpu_usage || 0;
             updateMetricBar('cpuBar', 'cpuValue', cpuUsage.toFixed(1), '%', 'cpu');
@@ -115,336 +221,359 @@ async function fetchMetrics() {
         console.error('获取指标失败:', e);
     }
 
-    document.getElementById('lastUpdate').textContent = '更新: ' + new Date().toLocaleTimeString();
-}
-
-// 更新表格
-function updateTable() {
-    const tbody = document.getElementById('tableBody');
-    tbody.innerHTML = '';
-    const searchText = document.getElementById('searchBox').value.toLowerCase();
-    const filtered = realtimeData.filter(d =>
-        (d.deviceName || '').toLowerCase().includes(searchText)
-    );
-    filtered.forEach(item => {
-        const tr = document.createElement('tr');
-        const time = new Date(item.timestamp / 1000000).toLocaleTimeString();
-        tr.innerHTML = `
-            <td>${time}</td>
-            <td class="device-name">${formatDeviceName(item.deviceName)}</td>
-            <td>${item.reading || '-'}</td>
-            <td class="reading-value">${formatValue(item.value)}</td>
-            <td>${item.valueType || '-'}</td>
-        `;
-        tbody.appendChild(tr);
-    });
-}
-
-// 搜索过滤
-function filterTable() {
-    updateTable();
-}
-
-// 格式化设备名称（移除64字符填充）
-function formatDeviceName(name) {
-    if (!name) return '-';
-    return name.trim().replace(/ +$/, '');
-}
-
-// 格式化数值
-function formatValue(value) {
-    if (value === null || value === undefined) return '-';
-    if (typeof value === 'number') {
-        return value.toFixed(2);
+    const lastUpdateElement = document.getElementById('lastUpdate');
+    if (lastUpdateElement) {
+        lastUpdateElement.textContent = '更新: ' + new Date().toLocaleTimeString();
     }
-    return String(value);
 }
 
-// 格式化数字
-function formatNumber(num) {
-    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-    return String(num);
+function formatUptime(seconds) {
+    if (!seconds || seconds <= 0) return '0s';
+    if (seconds < 60) return Math.floor(seconds) + 's';
+    if (seconds < 3600) return Math.floor(seconds / 60) + 'm';
+    if (seconds < 86400) return Math.floor(seconds / 3600) + 'h';
+    return Math.floor(seconds / 86400) + 'd';
 }
 
-// 更新设备选择器
+function updateMetricBar(barId, valueId, value, unit, type) {
+    const bar = document.getElementById(barId);
+    const valueElement = document.getElementById(valueId);
+    if (!bar || !valueElement) return;
+
+    const numValue = parseFloat(value);
+    const percentage = type === 'cpu' ? Math.min(numValue, 100) : Math.min(numValue, 100);
+    bar.style.width = percentage + '%';
+
+    if (type === 'cpu') {
+        if (numValue > 80) {
+            bar.style.background = 'linear-gradient(90deg, #ff4757, #ff6b81)';
+        } else if (numValue > 50) {
+            bar.style.background = 'linear-gradient(90deg, #ffa502, #ffbe76)';
+        } else {
+            bar.style.background = 'linear-gradient(90deg, #2ed573, #7bed9f)';
+        }
+    }
+
+    valueElement.textContent = value + unit;
+}
+
+async function fetchDeviceStatus() {
+    try {
+        const res = await fetch('/api/device-status');
+        const data = await res.json();
+        const devices = data.devices || [];
+
+        const onlineDevices = devices.filter(d => d.isOnline).length;
+        const totalDevices = devices.length;
+
+        const statusElement = document.getElementById('systemStatusValue');
+        if (statusElement) {
+            const healthyRatio = totalDevices > 0 ? (onlineDevices / totalDevices) : 0;
+            if (healthyRatio >= 0.8) {
+                statusElement.textContent = '健康';
+                statusElement.className = 'text-primary';
+            } else if (healthyRatio >= 0.5) {
+                statusElement.textContent = '警告';
+                statusElement.className = 'text-warning';
+            } else {
+                statusElement.textContent = '异常';
+                statusElement.className = 'text-danger';
+            }
+        }
+
+        const onlineCountElement = document.getElementById('onlineCount');
+        const totalCountElement = document.getElementById('totalCount');
+        if (onlineCountElement) onlineCountElement.textContent = onlineDevices;
+        if (totalCountElement) totalCountElement.textContent = totalDevices;
+    } catch (e) {
+        console.error('获取设备状态失败:', e);
+    }
+}
+
+async function fetchLicenseInfo() {
+    try {
+        const res = await fetch('/api/license');
+        const data = await res.json();
+
+        const versionElement = document.getElementById('licenseVersion');
+        if (versionElement) {
+            versionElement.textContent = data.version || '未知';
+        }
+
+        const devicesElement = document.getElementById('licenseDevices');
+        if (devicesElement) {
+            devicesElement.textContent = (data.deviceLimit || 0) + ' 台';
+        }
+    } catch (e) {
+        console.error('获取许可证信息失败:', e);
+    }
+}
+
+async function fetchDeviceAlerts() {
+    try {
+        const res = await fetch('/api/alert-groups');
+        const data = await res.json();
+        const groups = data.groups || [];
+        const alertsContainer = document.getElementById('deviceAlerts');
+        const alertCountElement = document.getElementById('deviceAlertCount');
+        if (!alertsContainer) return;
+
+        // 直接使用 API 返回的 groups，不使用 alertList 缓存
+        // 更新告警计数
+        if (alertCountElement) {
+            alertCountElement.textContent = groups.length;
+        }
+
+        if (groups.length === 0) {
+            alertsContainer.innerHTML = '<div class="text-center text-white-50 p-3">暂无告警</div>';
+            return;
+        }
+
+        let html = '';
+        for (let i = 0; i < groups.length && i < 10; i++) {
+            const g = groups[i];
+            const icon = g.Severity === 'critical' ? '🔴' : (g.Severity === 'warning' ? '🟠' : '🔵');
+            const colorClass = g.Severity === 'critical' ? 'text-danger' : (g.Severity === 'warning' ? 'text-warning' : 'text-info');
+            const bgClass = g.Severity === 'critical' ? 'bg-danger/10 border-danger/30' : (g.Severity === 'warning' ? 'bg-warning/10 border-warning/30' : 'bg-info/10 border-info/30');
+
+            let timeStr = '未知';
+            if (g.LastTime) {
+                try {
+                    const d = new Date(g.LastTime);
+                    if (d && !isNaN(d.getTime())) {
+                        timeStr = d.toLocaleTimeString();
+                    }
+                } catch (e) {}
+            }
+
+            let infoLine = '';
+            if (g.Devices && g.Devices.length > 0) {
+                const devs = g.Devices.slice(0, 3).join(', ');
+                const more = g.DeviceCount > 3 ? '...' : '';
+                infoLine = '<div class="small text-white-50 mt-1">' + devs + more + ' (' + g.DeviceCount + '台, ' + g.Count + '次)</div>';
+            } else if (g.Count > 1) {
+                infoLine = '<div class="small text-white-50 mt-1">共' + g.Count + '次</div>';
+            }
+
+            html += '<div class="alert-item p-3 rounded border ' + bgClass + '">' +
+                '<div class="d-flex justify-content-between items-center">' +
+                '<span class="' + colorClass + ' fw-bold">' + icon + ' ' + (g.Message || '未知告警') + '</span>' +
+                '<span class="text-secondary small">' + timeStr + '</span></div>' +
+                infoLine + '</div>';
+        }
+        alertsContainer.innerHTML = html;
+        // 更新问题设备列表
+        updateUnhealthyDevices(groups);
+    } catch (e) {
+        console.error('获取告警失败:', e);
+        const alertsContainer = document.getElementById('deviceAlerts');
+        const alertCountElement = document.getElementById('deviceAlertCount');
+        if (alertsContainer) {
+            alertsContainer.innerHTML = '<div class="text-center text-danger p-3">获取告警失败</div>';
+        }
+        if (alertCountElement) {
+            alertCountElement.textContent = '0';
+        }
+    }
+}
+
+// 清除告警
+function clearDeviceAlerts() {
+    alertList = [];
+    const alertsContainer = document.getElementById('deviceAlerts');
+    const alertCountElement = document.getElementById('deviceAlertCount');
+    if (alertsContainer) {
+        alertsContainer.innerHTML = '<div class="text-center text-white-50 p-3">暂无告警</div>';
+    }
+    if (alertCountElement) {
+        alertCountElement.textContent = '0';
+    }
+}
+
+function updateUnhealthyDevices(groups) {
+    const container = document.getElementById('unhealthyDevices');
+    if (!container) return;
+
+    // 收集有告警的设备
+    const unhealthyDeviceMap = new Map();
+    groups.forEach(g => {
+        if (g.Devices && g.Devices.length > 0) {
+            g.Devices.forEach(d => {
+                if (!unhealthyDeviceMap.has(d)) {
+                    unhealthyDeviceMap.set(d, []);
+                }
+                unhealthyDeviceMap.get(d).push(g.Message || '告警');
+            });
+        }
+    });
+
+    if (unhealthyDeviceMap.size === 0) {
+        container.innerHTML = '<div class="text-white-50 text-center">暂无问题设备</div>';
+        return;
+    }
+
+    let html = '<div class="row g-2">';
+    unhealthyDeviceMap.forEach((alerts, name) => {
+        const badgeClass = 'bg-warning';
+        html += `<div class="col-12 col-sm-6 col-md-4">
+            <div class="p-2 rounded" style="background: rgba(255,107,107,0.15); border: 1px solid rgba(255,107,107,0.3);">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="text-danger fw-bold">${name}</span>
+                    <span class="badge ${badgeClass} text-dark">${alerts.length}</span>
+                </div>
+                <div class="text-white-50 small mt-1">${alerts.slice(0, 2).join(', ')}${alerts.length > 2 ? '...' : ''}</div>
+            </div>
+        </div>`;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+async function updateDeviceList() {
+    try {
+        const res = await fetch('/api/device-status');
+        const data = await res.json();
+        const devices = data.devices || [];
+
+        const deviceCountElement = document.getElementById('deviceCount');
+        if (deviceCountElement) {
+            deviceCountElement.textContent = devices.length + ' 台设备';
+        }
+
+        const tbody = document.getElementById('deviceTableBody');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+
+        const deviceSearchElement = document.getElementById('deviceSearch');
+        let searchText = '';
+        if (deviceSearchElement) {
+            searchText = deviceSearchElement.value.toLowerCase();
+        }
+        const filtered = devices.filter(d => d.deviceName.toLowerCase().includes(searchText));
+
+        filtered.forEach(device => {
+            const tr = document.createElement('tr');
+            let lastActiveStr = '未知';
+            try {
+                const lastActiveDate = new Date(device.lastActive);
+                if (!isNaN(lastActiveDate.getTime())) {
+                    lastActiveStr = lastActiveDate.toLocaleTimeString();
+                }
+            } catch (e) {}
+            const status = device.isOnline ? '在线' : '离线';
+            const statusClass = status === '在线' ? 'text-primary' : 'text-muted';
+
+            tr.innerHTML = `
+                <td class="device-name">${device.deviceName}</td>
+                <td>${lastActiveStr}</td>
+                <td>${formatNumber(device.dataCount)}</td>
+                <td class="${statusClass}">${status}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } catch (e) {
+        console.error('获取设备列表失败:', e);
+    }
+}
+
+function filterDeviceTable() {
+    updateDeviceList();
+}
+
 function updateDeviceSelect() {
     const select = document.getElementById('deviceSelect');
-    const devices = [...new Set(realtimeData.map(d => d.deviceName).filter(Boolean))];
+    if (!select) return;
+
+    const devices = [...new Set(realtimeData.map(d => d.deviceName))];
     const currentValue = select.value;
+
     select.innerHTML = '<option value="">选择设备</option>';
-    devices.forEach(dev => {
-        select.innerHTML += `<option value="${dev}">${formatDeviceName(dev)}</option>`;
+    devices.forEach(device => {
+        const option = document.createElement('option');
+        option.value = device;
+        option.textContent = device;
+        select.appendChild(option);
     });
+
     if (devices.includes(currentValue)) {
         select.value = currentValue;
     }
     selectedDevice = select.value;
 }
 
-// 更新图表
-async function updateChart() {
-    selectedDevice = document.getElementById('deviceSelect').value;
-    selectedReading = document.getElementById('readingSelect').value;
-
-    if (!selectedDevice) {
-        trendChart.setOption({
-            xAxis: { data: [] },
-            series: [{ data: [] }]
-        });
-        return;
-    }
-
-    // 获取该设备的历史数据
-    try {
-        const res = await fetch(`/api/readings?deviceName=${encodeURIComponent(selectedDevice)}&limit=100`);
-        const data = await res.json();
-        historicalData = data.readings || [];
-        updateReadingSelect();
-
-        let chartData = historicalData;
-        if (selectedReading) {
-            chartData = historicalData.filter(d => d.reading === selectedReading);
-        }
-
-        const times = chartData.map(d => new Date(d.timestamp / 1000000).toLocaleTimeString());
-        const values = chartData.map(d => parseFloat(d.value) || 0);
-
-        trendChart.setOption({
-            xAxis: { data: times },
-            series: [{ data: values }]
-        });
-    } catch (e) {
-        console.error('获取历史数据失败:', e);
-    }
+function filterTable() {
+    updateTable();
 }
 
-// 更新传感器选择器
-function updateReadingSelect() {
-    const select = document.getElementById('readingSelect');
-    const readings = [...new Set(historicalData.filter(d => d.deviceName === selectedDevice).map(d => d.reading).filter(Boolean))];
-    const currentValue = select.value;
-    select.innerHTML = '<option value="">选择传感器</option>';
-    readings.forEach(rd => {
-        select.innerHTML += `<option value="${rd}">${rd}</option>`;
-    });
-    if (readings.includes(currentValue)) {
-        select.value = currentValue;
-    }
-    selectedReading = select.value;
-}
-
-// 更新系统指标
-function updateMetrics(data) {
-    // CPU 使用率（这里用内存使用率模拟，实际应该从系统获取）
-    const memUsage = data.memoryUsage || 0;
-    const memPercent = Math.min((memUsage / 1024) * 100, 100); // 假设总共 1GB
-    updateMetricBar('cpuBar', 'cpuValue', 0, '%', 'cpu');
-    updateMetricBar('memoryBar', 'memoryValue', memPercent.toFixed(1), ' MB', 'memory');
-
-    document.getElementById('goroutinesValue').textContent = data.goroutines || 0;
-    document.getElementById('uptimeValue').textContent = formatUptime(data.uptime_seconds);
-}
-
-// 更新指标条
-function updateMetricBar(barId, valueId, percent, unit, type) {
-    const bar = document.getElementById(barId);
-    const value = document.getElementById(valueId);
-    const percentNum = parseFloat(percent);
-
-    bar.style.width = percentNum + '%';
-    value.textContent = percent + unit;
-
-    let fillClass = 'metric-fill-normal';
-    if (type === 'cpu' && percentNum > 80) fillClass = 'metric-fill-danger';
-    else if (type === 'memory' && percentNum > 70) fillClass = 'metric-fill-warning';
-    else if (type === 'memory' && percentNum > 85) fillClass = 'metric-fill-danger';
-
-    bar.className = 'metric-fill ' + fillClass;
-}
-
-// 格式化运行时间
-function formatUptime(seconds) {
-    if (!seconds) return '0s';
-    if (seconds < 60) return seconds + 's';
-    if (seconds < 3600) return Math.floor(seconds / 60) + 'm';
-    if (seconds < 86400) return Math.floor(seconds / 3600) + 'h';
-    return Math.floor(seconds / 86400) + 'd';
-}
-
-// 更新设备列表
-function updateDeviceList() {
-    const deviceMap = new Map();
-    
-    // 统计每个设备的数据
-    realtimeData.forEach(item => {
-        const deviceName = formatDeviceName(item.deviceName);
-        if (!deviceMap.has(deviceName)) {
-            deviceMap.set(deviceName, {
-                name: deviceName,
-                lastActive: item.timestamp,
-                count: 0
-            });
-        }
-        const device = deviceMap.get(deviceName);
-        device.count++;
-        if (item.timestamp > device.lastActive) {
-            device.lastActive = item.timestamp;
-        }
-    });
-    
-    // 转换为数组并排序（按最后活跃时间）
-    const devices = Array.from(deviceMap.values()).sort((a, b) => b.lastActive - a.lastActive);
-    
-    // 更新设备数量
-    document.getElementById('deviceCount').textContent = devices.length + ' 台设备';
-    
-    // 更新设备表格
-    const tbody = document.getElementById('deviceTableBody');
+function updateTable() {
+    const tbody = document.getElementById('tableBody');
+    if (!tbody) return;
     tbody.innerHTML = '';
-    
-    const searchText = document.getElementById('deviceSearch').value.toLowerCase();
-    const filtered = devices.filter(d => d.name.toLowerCase().includes(searchText));
-    
-    filtered.forEach(device => {
+
+    const searchBox = document.getElementById('searchBox');
+    let searchText = '';
+    if (searchBox) {
+        searchText = searchBox.value.toLowerCase();
+    }
+
+    const filtered = realtimeData.filter(d =>
+        d.deviceName.toLowerCase().includes(searchText) ||
+        d.reading.toLowerCase().includes(searchText)
+    );
+
+    filtered.forEach(item => {
         const tr = document.createElement('tr');
-        const lastActive = new Date(device.lastActive / 1000000).toLocaleTimeString();
-        const status = device.lastActive > Date.now() - 5 * 60 * 1000000 ? '在线' : '离线';
-        const statusClass = status === '在线' ? 'text-primary' : 'text-muted';
-        
+        const time = new Date(item.timestamp / 1000000).toLocaleTimeString();
         tr.innerHTML = `
-            <td class="device-name">${device.name}</td>
-            <td>${lastActive}</td>
-            <td>${device.count}</td>
-            <td class="${statusClass}">${status}</td>
+            <td>${time}</td>
+            <td class="device-name">${item.deviceName}</td>
+            <td>${item.reading}</td>
+            <td>${item.value}</td>
+            <td>${item.valueType || 'Unknown'}</td>
         `;
         tbody.appendChild(tr);
     });
 }
 
-// 过滤设备表
-function filterDeviceTable() {
-    updateDeviceList();
-}
+function updateWaveform() {
+    const svg = document.getElementById('waveformSvg');
+    if (!svg) return;
 
-// 刷新数据
-function refreshData() {
-    fetchData();
-    fetchMetrics();
-}
-
-// 进入全屏
-function enterFullscreen() {
-    if (document.documentElement.requestFullscreen) {
-        document.documentElement.requestFullscreen();
-    }
-}
-
-// 导出数据
-function exportData() {
-    const format = prompt('请选择导出格式:\n1. CSV\n2. JSON', '1');
-    if (!format) return;
-    
-    const isCSV = format === '1';
-    const fileName = `sfsEdgeStore_${new Date().toISOString().slice(0,10)}.${isCSV ? 'csv' : 'json'}`;
-    
-    if (isCSV) {
-        exportToCSV(fileName);
-    } else {
-        exportToJSON(fileName);
-    }
-}
-
-// 导出为CSV
-function exportToCSV(fileName) {
-    let csv = '时间,设备,传感器,数值,类型\n';
-    realtimeData.forEach(item => {
-        const time = new Date(item.timestamp / 1000000).toISOString();
-        const device = formatDeviceName(item.deviceName);
-        const reading = item.reading || '';
-        const value = formatValue(item.value);
-        const type = item.valueType || '';
-        csv += `"${time}","${device}","${reading}","${value}","${type}"\n`;
-    });
-    downloadFile(fileName, csv, 'text/csv');
-}
-
-// 导出为JSON
-function exportToJSON(fileName) {
-    const exportData = realtimeData.map(item => ({
-        time: new Date(item.timestamp / 1000000).toISOString(),
-        device: formatDeviceName(item.deviceName),
-        sensor: item.reading || '',
-        value: item.value,
-        type: item.valueType || ''
-    }));
-    const jsonStr = JSON.stringify(exportData, null, 2);
-    downloadFile(fileName, jsonStr, 'application/json');
-}
-
-// 下载文件
-function downloadFile(fileName, content, mimeType) {
-    const blob = new Blob([content], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-}
-
-// 打开配置管理
-function openConfig() {
-    // 这里可以打开配置管理页面或模态框
-    alert('配置管理功能开发中...');
-}
-
-// 一键配置
-async function oneClickConfig() {
-    if (!confirm('确定要执行一键配置吗？这将自动检测环境并应用最佳配置。')) {
+    const recentData = realtimeData.slice(-50);
+    if (recentData.length < 2) {
+        svg.innerHTML = '';
         return;
     }
 
-    try {
-        // 显示加载状态
-        const originalText = document.querySelector('button[onclick="oneClickConfig()"]').textContent;
-        document.querySelector('button[onclick="oneClickConfig()"]').textContent = '配置中...';
-        document.querySelector('button[onclick="oneClickConfig()"]').disabled = true;
+    const width = svg.clientWidth || 800;
+    const height = svg.clientHeight || 160;
+    const padding = 10;
+    const graphWidth = width - padding * 2;
+    const graphHeight = height - padding * 2;
 
-        // 调用一键配置API
-        const response = await fetch('/api/config/oneclick', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
+    const readingTypes = [...new Set(recentData.map(d => d.reading))].slice(0, 3);
+    const colors = ['#ff6b6b', '#00d9ff', '#10b981'];
+
+    let svgContent = '';
+
+    readingTypes.forEach((reading, idx) => {
+        const readingData = recentData.filter(d => d.reading === reading);
+        if (readingData.length < 2) return;
+
+        const values = readingData.map(d => parseFloat(d.value) || 0);
+        const minVal = Math.min(...values);
+        const maxVal = Math.max(...values);
+        const range = maxVal - minVal || 1;
+
+        const points = readingData.map((d, i) => {
+            const x = padding + (i / (readingData.length - 1)) * graphWidth;
+            const y = padding + graphHeight - ((parseFloat(d.value) - minVal) / range) * graphHeight;
+            return `${x},${y}`;
         });
 
-        const result = await response.json();
+        const polyline = points.join(' ');
+        svgContent += `<polyline points="${polyline}" fill="none" stroke="${colors[idx]}" stroke-width="2" stroke-linejoin="round"/>`;
+    });
 
-        if (result.status === 'success') {
-            alert('✅ 一键配置成功！系统已自动检测环境并应用最佳配置。');
-            // 刷新页面以应用新配置
-            setTimeout(() => {
-                window.location.reload();
-            }, 1000);
-        } else {
-            alert('❌ 配置失败: ' + (result.error || '未知错误'));
-        }
-    } catch (error) {
-        alert('❌ 配置失败: ' + error.message);
-    } finally {
-        // 恢复按钮状态
-        document.querySelector('button[onclick="oneClickConfig()"]').textContent = '✨ 一键配置';
-        document.querySelector('button[onclick="oneClickConfig()"]').disabled = false;
-    }
+    svg.innerHTML = svgContent;
 }
-
-// 窗口大小改变时重新调整图表
-window.addEventListener('resize', function() {
-    if (trendChart) {
-        trendChart.resize();
-    }
-});
-

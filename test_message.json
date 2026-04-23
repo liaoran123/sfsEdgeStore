@@ -1,0 +1,18 @@
+{
+  "messageType": "event",
+  "payload": {
+    "id": "123",
+    "deviceName": "TestDevice",
+    "readings": [
+      {
+        "id": "456",
+        "resourceName": "temperature",
+        "value": "25.5",
+        "valueType": "Float64",
+        "origin": 1776957425000000000,
+        "metadata": "{}"
+      }
+    ],
+    "origin": 1776957425000000000
+  }
+}

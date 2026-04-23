@@ -4,7 +4,6 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -20,13 +19,10 @@ import (
 	"sfsEdgeStore/configwizard"
 	"sfsEdgeStore/core/database"
 	"sfsEdgeStore/core/edgex"
-	"sfsEdgeStore/core/mqtt"
 	"sfsEdgeStore/monitor"
 	"sfsEdgeStore/resource"
 	"sfsEdgeStore/retention"
-	"sfsEdgeStore/ws"
 
-	"github.com/gorilla/websocket"
 	"github.com/liaoran123/sfsDb/engine"
 	"github.com/liaoran123/sfsDb/record"
 	"github.com/liaoran123/sfsDb/storage"
@@ -40,15 +36,10 @@ type Server struct {
 	RetentionMgr    *retention.RetentionManager
 	AlertNotifier   *alert.Notifier
 	ResourceMonitor *resource.ResourceMonitor
-	MQTTClient      mqtt.Client
-	wsManager       *ws.WSManager
 }
 
 // NewServer 创建一个新的服务器实例
 func NewServer(table *engine.Table, cfg *config.Config, monitor *monitor.Monitor, retentionMgr *retention.RetentionManager, alertNotifier *alert.Notifier, resourceMonitor *resource.ResourceMonitor) *Server {
-	wsManager := ws.NewWSManager()
-	go wsManager.Run()
-
 	return &Server{
 		Table:           table,
 		Config:          cfg,
@@ -56,7 +47,6 @@ func NewServer(table *engine.Table, cfg *config.Config, monitor *monitor.Monitor
 		RetentionMgr:    retentionMgr,
 		AlertNotifier:   alertNotifier,
 		ResourceMonitor: resourceMonitor,
-		wsManager:       wsManager,
 	}
 }
 
@@ -89,13 +79,6 @@ func (s *Server) Start() error {
 	}()
 
 	return nil
-}
-
-// WebSocket 升级器
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true // 允许所有来源
-	},
 }
 
 // DeviceNameMiddleware 处理HTTP请求中的deviceName参数格式化
@@ -200,9 +183,6 @@ func (s *Server) registerRoutes() {
 	// 分组告警API
 	http.HandleFunc("/api/alert-groups", s.handleAlertGroups)
 
-	// WebSocket 端点
-	http.HandleFunc("/ws", s.handleWebSocket)
-
 }
 
 // handleQueryReadings 处理数据查询请求
@@ -277,7 +257,7 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 创建备份管理器
-	backupManager := backup.NewBackupManager(storage.GetDBManager().GetDB())
+	backupManager := backup.NewBackupManager(storage.KVDb)
 
 	// 执行备份
 	backupFile, err := backupManager.Backup(backupPath)
@@ -317,7 +297,7 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 创建备份管理器
-	backupManager := backup.NewBackupManager(storage.GetDBManager().GetDB())
+	backupManager := backup.NewBackupManager(storage.KVDb)
 
 	// 执行恢复
 	if err := backupManager.Restore(backupFile); err != nil {
@@ -347,35 +327,45 @@ func (s *Server) handleTestEdgeX(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 从请求体中读取EdgeX消息
-	var edgexMsg edgex.EdgeXMessage
-	if err := json.NewDecoder(r.Body).Decode(&edgexMsg); err != nil {
-		// 如果请求体不是EdgeXMessage格式，尝试直接解析为EdgeX事件
-		r.Body.Close()
-
-		// 重新读取请求体
-		r.Body = http.MaxBytesReader(w, r.Body, 10*1024*1024) // 限制为10MB
-
-		// 读取请求体内容
-		payload, err := io.ReadAll(r.Body)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Failed to read request body: %v", err)})
-			return
-		}
-
-		// 尝试直接解析为EdgeX事件
-		var event edgex.EdgeXEvent
-		if err := json.Unmarshal(payload, &event); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Failed to process message: %v", err)})
-			return
-		}
-
-		// 格式化设备名称
-		event.DeviceName = common.FormatDeviceName(event.DeviceName)
-		handleEdgeXEvent(s, w, &event)
-		return
+	// 模拟EdgeX消息
+	edgexMsg := edgex.EdgeXMessage{
+		CorrelationID: "test-correlation-id",
+		MessageType:   "event",
+		Origin:        time.Now().UnixNano(),
+		Payload: json.RawMessage(`{
+			"id": "test-event-id",
+			"deviceName": "TestDevice-001",
+			"readings": [
+				{
+					"id": "reading-1",
+				"resourceName": "temperature",
+				"value": "25.5",
+				"valueType": "Float32",
+				"baseType": "Float",
+				"origin": 1677721600000000000,
+				"deviceName": "TestDevice-001"
+				},
+				{
+					"id": "reading-2",
+				"resourceName": "humidity",
+				"value": "45",
+				"valueType": "Int32",
+				"baseType": "Int",
+				"origin": 1677721600000000000,
+				"deviceName": "TestDevice-001"
+				},
+				{
+					"id": "reading-3",
+				"resourceName": "pressure",
+				"value": "1013.25",
+				"valueType": "Float64",
+				"baseType": "Float",
+				"origin": 1677721600000000000,
+				"deviceName": "TestDevice-001"
+				}
+			],
+			"origin": 1677721600000000000
+		}`),
 	}
 
 	// 转换为字节数组并使用edgex包处理
@@ -389,16 +379,13 @@ func (s *Server) handleTestEdgeX(w http.ResponseWriter, r *http.Request) {
 	event, err := edgex.ProcessMessage(msgBytes)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Failed to process message: %v", err)})
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
-	handleEdgeXEvent(s, w, event)
-}
 
-// handleEdgeXEvent 处理EdgeX事件
-func handleEdgeXEvent(s *Server, w http.ResponseWriter, event *edgex.EdgeXEvent) {
 	// 收集所有读数，准备批量插入
 	var records []*map[string]any
+
 	// 处理每个读数
 	for _, reading := range event.Readings {
 		// 准备数据
@@ -410,20 +397,28 @@ func handleEdgeXEvent(s *Server, w http.ResponseWriter, event *edgex.EdgeXEvent)
 		// 解析值的类型
 		value := common.ParseValue(reading.Value)
 
-		// 提取设备类型 (修正版，增加容错)
-		deviceType := extractDeviceType(event.DeviceName)
+		// 提取设备类型
+			deviceType := ""
+			deviceName := event.DeviceName
+			for i := len(deviceName) - 1; i >= 0; i-- {
+				if deviceName[i] == '-' {
+					deviceType = deviceName[:i]
+					break
+				}
+			}
 
-		data := map[string]any{
-			"id":         reading.ID,
-			"deviceName": event.DeviceName, // 设备名称已经在ProcessMessage中格式化
-			"deviceType": deviceType,       // 可能为空，需要在下游处理
-			"reading":    reading.ResourceName,
-			"value":      value,
-			"valueType":  reading.ValueType,
-			// 移除 baseType，因为它不是标准 Reading 字段
-			"timestamp": reading.Origin, // 纳秒级时间戳，类型为 int64
-			"metadata":  metadataStr,
-		}
+			data := map[string]any{
+				"id":         reading.ID,
+				"deviceName": event.DeviceName, // 设备名称已经在ProcessMessage中格式化
+				"deviceType": deviceType,
+				"reading":    reading.ResourceName,
+				"value":      value,
+				"valueType":  reading.ValueType,
+				"baseType":   reading.BaseType,
+				"timestamp":  reading.Origin, // 纳秒级时间戳，类型为 int64
+				"metadata":   metadataStr,
+			}
+
 		records = append(records, &data)
 	}
 
@@ -437,8 +432,10 @@ func handleEdgeXEvent(s *Server, w http.ResponseWriter, event *edgex.EdgeXEvent)
 		} else {
 			// 更新设备状态
 			for _, reading := range event.Readings {
-				// 安全地更新设备状态
-				updateDeviceStatus(s.Monitor, event.DeviceName, reading.ResourceName, reading.Value)
+				val := common.ParseValue(reading.Value)
+				if fv, ok := val.(float64); ok {
+					s.Monitor.UpdateDeviceStatus(event.DeviceName, reading.ResourceName, fv)
+				}
 			}
 
 			json.NewEncoder(w).Encode(map[string]string{
@@ -1808,89 +1805,4 @@ func (s *Server) handleAlertGroups(w http.ResponseWriter, r *http.Request) {
 		"status": "success",
 		"groups": groups,
 	})
-}
-
-// 提取设备类型的辅助函数 (修正版)
-func extractDeviceType(deviceName string) string {
-	for i := len(deviceName) - 1; i >= 0; i-- {
-		if deviceName[i] == '-' {
-			return deviceName[:i]
-		}
-	}
-	// 如果没有找到 '-', 返回原名字或空字符串，取决于你的业务逻辑
-	// 这里返回空字符串，调用方需要处理
-	return ""
-}
-
-// 安全更新设备状态的辅助函数
-func updateDeviceStatus(monitor *monitor.Monitor, deviceName, resourceName string, rawValue interface{}) {
-	// 解析原始值为 float64
-	var parsedVal interface{}
-	switch v := rawValue.(type) {
-	case string:
-		parsedVal = common.ParseValue(v)
-	case float64:
-		parsedVal = v
-	case float32:
-		parsedVal = float64(v)
-	case int64:
-		parsedVal = float64(v)
-	case int32:
-		parsedVal = float64(v)
-	case int:
-		parsedVal = float64(v)
-	default:
-		// 其他类型，转换为字符串后再解析
-		parsedVal = common.ParseValue(fmt.Sprintf("%v", v))
-	}
-
-	if fv, ok := parsedVal.(float64); ok {
-		monitor.UpdateDeviceStatus(deviceName, resourceName, fv)
-	} else {
-		// 尝试转换其他数值类型
-		switch v := parsedVal.(type) {
-		case int64:
-			monitor.UpdateDeviceStatus(deviceName, resourceName, float64(v))
-		case int32:
-			monitor.UpdateDeviceStatus(deviceName, resourceName, float64(v))
-		case int:
-			monitor.UpdateDeviceStatus(deviceName, resourceName, float64(v))
-		case float32:
-			monitor.UpdateDeviceStatus(deviceName, resourceName, float64(v))
-		default:
-			// 非数值类型，不更新或记录日志
-			// log.Printf("Non-numeric value for device %s/%s: %v (type %T)", deviceName, resourceName, parsedVal, parsedVal)
-		}
-	}
-}
-
-// handleWebSocket 处理 WebSocket 连接
-func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Println("WebSocket upgrade error:", err)
-		return
-	}
-	s.wsManager.Register(conn)
-
-	// 保持连接
-	for {
-		_, _, err := conn.ReadMessage()
-		if err != nil {
-			s.wsManager.Unregister(conn)
-			break
-		}
-	}
-}
-
-// GetWSManager 获取 WebSocket 管理器
-func (s *Server) GetWSManager() *ws.WSManager {
-	return s.wsManager
-}
-
-// Broadcast 实现 broadcast.Broadcaster 接口
-func (s *Server) Broadcast(message []byte) {
-	if s.wsManager != nil {
-		s.wsManager.Broadcast(message)
-	}
 }

@@ -2,7 +2,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -14,6 +13,7 @@ import (
 	"sfsEdgeStore/alert"
 	"sfsEdgeStore/analyzer"
 	"sfsEdgeStore/auth"
+	"sfsEdgeStore/cli"
 	"sfsEdgeStore/cloudsync/sync"
 	"sfsEdgeStore/config"
 	"sfsEdgeStore/configwizard"
@@ -24,63 +24,53 @@ import (
 	"sfsEdgeStore/resource"
 	"sfsEdgeStore/retention"
 	"sfsEdgeStore/server"
-	"sfsEdgeStore/simulator"
 	"sfsEdgeStore/watchdog"
 )
 
-var appConfig *config.Config
-var dataQueue *queue.Queue
-var monitorInstance *monitor.Monitor
-var agentInstance *agent.Agent
-var analyzerInstance *analyzer.Analyzer
-var retentionManager *retention.RetentionManager
-var alertNotifier *alert.Notifier
-var resourceMonitor *resource.ResourceMonitor
-var simulatorInstance *simulator.Simulator
-var syncManager *sync.SyncManager
-var watchdogInstance *watchdog.Watchdog
-var appLicense *config.License
-
-func printWelcome() {
-	fmt.Println(`
-╔═══════════════════════════════════════════════════════════════╗
-║                    sfsEdgeStore 启动成功                       ║
-╠═══════════════════════════════════════════════════════════════╣
-║  轻量级工业物联网边缘数据存储适配器                             ║
-║  内存占用: <50MB | 极轻量 | 高可靠                              ║
-╠═══════════════════════════════════════════════════════════════╣
-║  Web 监控界面: http://localhost:8081                          ║
-║  停止方法: Ctrl+C                                              ║
-╚═══════════════════════════════════════════════════════════════╝
-`)
+type Components struct {
+	Monitor         *monitor.Monitor
+	AlertNotifier   *alert.Notifier
+	Watchdog        *watchdog.Watchdog
+	Analyzer        *analyzer.Analyzer
+	Agent           *agent.Agent
+	Retention       *retention.RetentionManager
+	ResourceMonitor *resource.ResourceMonitor
+	SyncManager     *sync.SyncManager
+	Server          *server.Server
+	MQTTClient      *mqtt.Client
+	DataQueue       *queue.Queue
 }
 
 func main() {
-	// 定义命令行参数
-	mqttBroker := flag.String("broker", "", "MQTT Broker地址 (例如: tcp://localhost:1883)")
-	mqttTopic := flag.String("topic", "", "MQTT订阅主题 (例如: edgex/events/core/#)")
-	httpPort := flag.String("port", "", "HTTP服务端口 (例如: 8081)")
-	help := flag.Bool("help", false, "显示帮助信息")
-	flag.Parse()
-
-	// 显示帮助信息
-	if *help {
-		fmt.Println("sfsEdgeStore - 轻量级工业物联网边缘数据存储适配器")
-		fmt.Println("\n用法: sfsedgestore [选项]")
-		fmt.Println("\n选项:")
-		fmt.Println("  -broker <地址>   MQTT Broker地址 (例如: tcp://localhost:1883)")
-		fmt.Println("  -topic <主题>    MQTT订阅主题 (例如: edgex/events/core/#)")
-		fmt.Println("  -port <端口>     HTTP服务端口 (例如: 8081)")
-		fmt.Println("  -help            显示帮助信息")
-		fmt.Println("\n示例:")
-		fmt.Println("  sfsedgestore")
-		fmt.Println("  sfsedgestore -broker tcp://192.168.1.100:1883 -port 8082")
+	// 1. 解析命令行参数
+	args := cli.Parse()
+	if args.Help {
+		args.ShowHelp()
 		return
 	}
 
+	// 2. 初始化配置
+	appConfig, appLicense, err := initConfig(args)
+	if err != nil {
+		log.Fatalf("配置初始化失败: %v", err)
+	}
+
+	// 3. 初始化核心组件
+	components, err := initComponents(appConfig)
+	if err != nil {
+		log.Fatalf("组件初始化失败: %v", err)
+	}
+
+	// 4. 启动服务
+	startServices(components, appConfig, appLicense)
+
+	// 5. 等待中断信号并优雅关闭
+	waitForShutdown(components)
+}
+
+func initConfig(args *cli.Args) (*config.Config, *config.License, error) {
 	// 加载配置
-	var err error
-	appConfig, err = config.Load()
+	appConfig, err := config.Load()
 	if err != nil {
 		log.Printf("没有找到 config.json，使用默认配置")
 	}
@@ -88,12 +78,11 @@ func main() {
 	// 运行配置向导
 	wizard := configwizard.NewWizard(appConfig)
 	if err := wizard.Run(); err != nil {
-		log.Printf("Configuration wizard failed: %v", err)
-		// 继续运行，不阻止启动
+		log.Printf("配置向导失败: %v", err)
 	}
 
 	// 加载许可证
-	appLicense, err = config.LoadLicense()
+	appLicense, err := config.LoadLicense()
 	if err != nil {
 		log.Printf("加载许可证失败: %v，使用默认社区版", err)
 		appLicense = &config.License{
@@ -107,70 +96,116 @@ func main() {
 	appConfig.EnterpriseFeatures.MaxDevices = appLicense.GetMaxDevices()
 
 	// 命令行参数覆盖配置
-	if *mqttBroker != "" {
-		appConfig.MQTTBroker = *mqttBroker
+	if args.MQTTBroker != "" {
+		appConfig.MQTTBroker = args.MQTTBroker
 	}
-	if *mqttTopic != "" {
-		appConfig.MQTTTopic = *mqttTopic
+	if args.MQTTTopic != "" {
+		appConfig.MQTTTopic = args.MQTTTopic
 	}
-	if *httpPort != "" {
-		appConfig.HTTPPort = *httpPort
+	if args.HTTPPort != "" {
+		appConfig.HTTPPort = args.HTTPPort
 	}
 
+	return appConfig, appLicense, nil
+}
+
+func initComponents(appConfig *config.Config) (*Components, error) {
 	// 初始化监控
-	monitorInstance = monitor.NewMonitor()
+	monitorInstance := monitor.NewMonitor(appConfig)
 
 	// 初始化告警通知器
-	alertNotifier = alert.NewNotifier(appConfig)
+	alertNotifier := alert.NewNotifier(appConfig)
 	monitorInstance.SetNotifier(alertNotifier)
 	if err := alertNotifier.Start(); err != nil {
-		log.Printf("Failed to start alert notifier: %v", err)
+		log.Printf("告警通知器启动失败: %v", err)
 	}
 
-	// 初始化并启动看门狗
-	watchdogInstance = watchdog.NewWatchdog(monitorInstance)
+	// 初始化看门狗
+	watchdogInstance := watchdog.NewWatchdog(monitorInstance)
 	watchdogInstance.Start()
 
 	// 初始化分析引擎
-	analyzerInstance = analyzer.NewAnalyzer(appConfig)
+	analyzerInstance := analyzer.NewAnalyzer(appConfig)
 	if appConfig.EnableAnalyzer {
-		log.Println("Analyzer enabled")
+		log.Println("分析引擎已启用")
 	} else {
-		log.Println("Analyzer disabled")
+		log.Println("分析引擎已禁用")
 	}
 
-	// 连接 sfsDb
-	if err = database.Init(appConfig.DBPath, appConfig.DBUseEncryption, appConfig.DBEncryptionKey, appConfig.DBEncryptionAlgorithm); err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+	// 连接数据库
+	if err := database.Init(appConfig.DBPath, appConfig.DBUseEncryption, appConfig.DBEncryptionKey, appConfig.DBEncryptionAlgorithm); err != nil {
+		return nil, fmt.Errorf("数据库初始化失败: %v", err)
 	}
 
 	// 启动认证清理任务
 	authManager := auth.NewAuthManager()
-	authManager.StartCleanupTask(24 * time.Hour) // 每24小时清理一次
+	authManager.StartCleanupTask(24 * time.Hour)
 
-	// 初始化数据队列，数据库添加失败的数据会被缓存到队列中重新尝试添加（如在断电后重启）
-	dataQueue, err = queue.NewQueue("./data_queue")
+	// 初始化数据队列
+	dataQueue, err := queue.NewQueue("./data_queue")
 	if err != nil {
-		log.Fatalf("Failed to initialize data queue: %v", err)
+		return nil, fmt.Errorf("数据队列初始化失败: %v", err)
+	}
+
+	// 初始化Agent
+	agentInstance, err := agent.NewAgent(appConfig, monitorInstance)
+	if err != nil {
+		log.Printf("Agent初始化失败: %v", err)
+	}
+
+	// 初始化数据保留策略管理器
+	retentionManager := retention.NewRetentionManager(database.Table, appConfig)
+	if err := retentionManager.Start(); err != nil {
+		log.Printf("数据保留策略管理器启动失败: %v", err)
+	}
+
+	// 初始化资源监控器
+	resourceMonitor := resource.NewResourceMonitor(appConfig, monitorInstance)
+	if err := resourceMonitor.Start(); err != nil {
+		log.Printf("资源监控器启动失败: %v", err)
+	}
+
+	// 初始化HTTP服务器
+	serverInstance := server.NewServer(database.Table, appConfig, monitorInstance, retentionManager, alertNotifier, resourceMonitor)
+
+	// 初始化同步管理器（企业版功能）
+	var syncManager *sync.SyncManager
+	if appConfig.LicenseType == "enterprise" && appConfig.EnableDataSync {
+		syncManager = sync.NewSyncManager(appConfig, monitorInstance)
+		if err := syncManager.Start(); err != nil {
+			log.Printf("同步管理器启动失败: %v", err)
+		} else {
+			log.Println("同步管理器已启动（企业版功能）")
+		}
 	}
 
 	var mqttClient *mqtt.Client
-	if !appConfig.EnableSimulator {
-		mqttClient, err = mqtt.NewClient(appConfig, dataQueue, monitorInstance, analyzerInstance)
-		if err != nil {
-			log.Fatalf("Failed to initialize MQTT: %v", err)
-		}
-		defer mqttClient.Disconnect()
-
-		if err := mqttClient.Subscribe(); err != nil {
-			log.Fatalf("Failed to subscribe to EdgeX messages: %v", err)
-		}
-	} else {
-		log.Println("Simulator enabled, skipping MQTT connection")
+	mqttClient, err = mqtt.NewClient(appConfig, dataQueue, monitorInstance, analyzerInstance, serverInstance)
+	if err != nil {
+		return nil, fmt.Errorf("MQTT客户端初始化失败: %v", err)
+	}
+	if err := mqttClient.Subscribe(); err != nil {
+		return nil, fmt.Errorf("MQTT订阅失败: %v", err)
 	}
 
+	return &Components{
+		Monitor:         monitorInstance,
+		AlertNotifier:   alertNotifier,
+		Watchdog:        watchdogInstance,
+		Analyzer:        analyzerInstance,
+		Agent:           agentInstance,
+		Retention:       retentionManager,
+		ResourceMonitor: resourceMonitor,
+		SyncManager:     syncManager,
+		Server:          serverInstance,
+		MQTTClient:      mqttClient,
+		DataQueue:       dataQueue,
+	}, nil
+}
+
+func startServices(c *Components, appConfig *config.Config, appLicense *config.License) {
 	// 打印欢迎信息
-	printWelcome()
+	cli.PrintWelcome()
 
 	// 显示许可证信息
 	config.PrintLicenseInfo(appLicense)
@@ -181,118 +216,74 @@ func main() {
 	log.Printf("HTTP端口: %s", appConfig.HTTPPort)
 	log.Println("sfsDb EdgeX adapter started successfully")
 
-	// 启动队列处理 goroutine，处理可能存在添加失败等异常数据
-	/*
-	   启动队列处理 goroutine，用于处理数据队列中的数据
-	   1. 从队列中取出数据
-	   2. 转换为 []*map[string]any 类型
-	   3. 使用重试机制批量插入到数据库中（默认重试3次，每次间隔2秒）
-	   4. 如果插入失败，将数据重新加入队列，等待后续重试
-	*/
-	dataQueue.ProcessQueue(func(data interface{}) error {
+	// 启动队列处理
+	c.DataQueue.ProcessQueue(func(data interface{}) error {
 		records, ok := data.([]*map[string]any)
 		if !ok {
-			return fmt.Errorf("invalid data type in queue")
+			return fmt.Errorf("队列数据类型错误")
 		}
-		// 使用重试机制插入数据
 		return database.BatchInsertWithRetry(database.Table, records, 3, 2*time.Second)
 	})
 
-	// 初始化并启动极简管理Agent
-	agentInstance, err = agent.NewAgent(appConfig, monitorInstance)
-	if err != nil {
-		log.Printf("Failed to initialize agent: %v", err)
-		// Agent初始化失败不影响主服务运行
-	} else {
-		if err := agentInstance.Start(); err != nil {
-			log.Printf("Failed to start agent: %v", err)
+	// 启动Agent
+	if c.Agent != nil {
+		if err := c.Agent.Start(); err != nil {
+			log.Printf("Agent启动失败: %v", err)
 		}
 	}
 
-	// 初始化并启动数据保留策略管理器
-	retentionManager = retention.NewRetentionManager(database.Table, appConfig)
-	if err := retentionManager.Start(); err != nil {
-		log.Printf("Failed to start retention manager: %v", err)
+	// 启动HTTP服务器
+	if err := c.Server.Start(); err != nil {
+		log.Fatalf("HTTP服务器启动失败: %v", err)
 	}
+}
 
-	// 初始化并启动资源监控器
-	resourceMonitor = resource.NewResourceMonitor(appConfig, monitorInstance)
-	if err := resourceMonitor.Start(); err != nil {
-		log.Printf("Failed to start resource monitor: %v", err)
-	}
-	/*
-		// 初始化并启动模拟器
-		if appConfig.EnableSimulator {
-			simConfig := simulator.DefaultSimulatorConfig()
-			simConfig.Enabled = true
-			simConfig.IntervalMin = time.Duration(appConfig.SimulatorIntervalMin) * time.Second
-			simConfig.IntervalMax = time.Duration(appConfig.SimulatorIntervalMax) * time.Second
-
-			simulatorInstance = simulator.NewSimulator(monitorInstance, analyzerInstance, simConfig)
-			if err := simulatorInstance.Start(); err != nil {
-				log.Printf("Failed to start simulator: %v", err)
-			}
-		}
-	*/
-	// 初始化并启动同步管理器（企业版功能）
-	if appConfig.LicenseType == "enterprise" && appConfig.EnableDataSync {
-		syncManager = sync.NewSyncManager(appConfig, monitorInstance)
-		if err := syncManager.Start(); err != nil {
-			log.Printf("Failed to start sync manager: %v", err)
-		} else {
-			log.Println("Sync manager started (enterprise feature)")
-		}
-	}
-
-	// 启动 HTTP 服务器，提供查询接口
-	serverInstance := server.NewServer(database.Table, appConfig, monitorInstance, retentionManager, alertNotifier, resourceMonitor)
-	if err := serverInstance.Start(); err != nil {
-		log.Fatalf("Failed to start HTTP server: %v", err)
-	}
-
-	// 等待中断信号以优雅地关闭服务器
-	quit := make(chan os.Signal, 1)                      // 创建一个信号通道，用于接收中断信号
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM) // 注册信号通知，当收到SIGINT或SIGTERM时，将信号发送到quit通道
-	<-quit                                               // 阻塞直到收到中断信号。
-	log.Println("Shutting down adapter...")
+func waitForShutdown(c *Components) {
+	// 等待中断信号
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("正在关闭服务...")
 
 	// 停止Agent
-	if agentInstance != nil {
-		agentInstance.Stop()
+	if c.Agent != nil {
+		c.Agent.Stop()
 	}
 
 	// 停止数据保留策略管理器
-	if retentionManager != nil {
-		retentionManager.Stop()
+	if c.Retention != nil {
+		c.Retention.Stop()
 	}
 
 	// 停止告警通知器
-	if alertNotifier != nil {
-		alertNotifier.Stop()
+	if c.AlertNotifier != nil {
+		c.AlertNotifier.Stop()
 	}
 
 	// 停止资源监控器
-	if resourceMonitor != nil {
-		resourceMonitor.Stop()
+	if c.ResourceMonitor != nil {
+		c.ResourceMonitor.Stop()
 	}
 
 	// 停止同步管理器（企业版功能）
-	if syncManager != nil {
-		syncManager.Stop()
+	if c.SyncManager != nil {
+		c.SyncManager.Stop()
 	}
 
 	// 停止看门狗
-	if watchdogInstance != nil {
-		watchdogInstance.Stop()
+	if c.Watchdog != nil {
+		c.Watchdog.Stop()
 	}
-	/*
-		// 停止模拟器
-		if simulatorInstance != nil {
-			simulatorInstance.Stop()
-		}
-	*/
-	// 给服务器 5 秒的时间来完成正在处理的请求
+
+	
+
+	// 断开MQTT连接
+	if c.MQTTClient != nil {
+		c.MQTTClient.Disconnect()
+	}
+
+	// 给服务器5秒时间完成正在处理的请求
 	time.Sleep(5 * time.Second)
 
-	log.Println("Adapter exited")
+	log.Println("服务已退出")
 }
