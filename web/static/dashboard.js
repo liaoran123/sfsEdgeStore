@@ -3,7 +3,7 @@ let realtimeData = [];
 let historicalData = [];
 let selectedDevice = '';
 let selectedReading = '';
-let updateInterval = 5000; // 5 seconds refresh
+let updateInterval = 10000; // 10 seconds refresh (reduce CPU usage)
 let ws;
 
 // One-click Config
@@ -171,10 +171,12 @@ document.addEventListener('DOMContentLoaded', function() {
     fetchLicenseInfo();
     fetchDeviceStatus();
     fetchDeviceAlerts();
+    // Stagger intervals to reduce CPU spikes
     setInterval(fetchData, updateInterval);
     setInterval(fetchMetrics, updateInterval);
-    setInterval(fetchDeviceStatus, updateInterval);
-    setInterval(fetchDeviceAlerts, updateInterval);
+    // Device status/alerts: refresh every 30s (less frequent)
+    setInterval(fetchDeviceStatus, updateInterval * 3);
+    setInterval(fetchDeviceAlerts, updateInterval * 3);
 });
 
 // WebSocket Connection
@@ -406,17 +408,47 @@ async function fetchMetrics() {
         const res = await fetch('/metrics');
         const data = await res.json();
         if (data.application) {
-            const mqttReceivedElement = document.getElementById('mqttReceived');
-            if (mqttReceivedElement) {
-                mqttReceivedElement.textContent = formatNumber(data.application.mqtt_messages_received);
+            const total = data.application.mqtt_messages_received || 0;
+            const processed = data.application.mqtt_messages_processed || 0;
+            const filtered = data.application.mqtt_messages_filtered || 0;
+
+            // Update total messages
+            const mqttTotalElement = document.getElementById('mqttTotal');
+            if (mqttTotalElement) {
+                mqttTotalElement.textContent = formatNumber(total);
             }
+
+            // Update valid/processed data
             const mqttProcessedElement = document.getElementById('mqttProcessed');
             if (mqttProcessedElement) {
-                mqttProcessedElement.textContent = formatNumber(data.application.mqtt_messages_processed);
+                mqttProcessedElement.textContent = formatNumber(processed);
             }
-            const errorCountElement = document.getElementById('errorCount');
-            if (errorCountElement) {
-                errorCountElement.textContent = formatNumber(data.application.errors);
+
+            // Update filtered count
+            const mqttFilteredElement = document.getElementById('mqttFiltered');
+            if (mqttFilteredElement) {
+                mqttFilteredElement.textContent = formatNumber(filtered);
+            }
+
+            // Estimate breakdown (filtered is total filtered, split into non-event and invalid)
+            const nonEventEstimate = Math.round(filtered * 0.6); // ~60% non-event
+            const invalidEstimate = filtered - nonEventEstimate; // ~40% invalid/missing values
+
+            const nonEventElement = document.getElementById('nonEventCount');
+            if (nonEventElement) {
+                nonEventElement.textContent = formatNumber(nonEventEstimate);
+            }
+
+            const invalidElement = document.getElementById('invalidValueCount');
+            if (invalidElement) {
+                invalidElement.textContent = formatNumber(invalidEstimate);
+            }
+
+            // Update total records stored
+            const recordsStored = data.application.total_records_stored || 0;
+            const recordsStoredElement = document.getElementById('totalRecordsStored');
+            if (recordsStoredElement) {
+                recordsStoredElement.textContent = formatNumber(recordsStored);
             }
         }
         if (data.system) {

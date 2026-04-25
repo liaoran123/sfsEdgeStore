@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -25,13 +26,16 @@ import (
 	"sfsEdgeStore/resource"
 	"sfsEdgeStore/retention"
 	"sfsEdgeStore/server"
-	"sfsEdgeStore/watchdog"
 )
+
+func init() {
+	// GC 优化：平衡内存和 CPU
+	debug.SetGCPercent(100) // 默认值，避免过度 GC 消耗 CPU
+}
 
 type Components struct {
 	Monitor         *monitor.Monitor
 	AlertNotifier   *alert.Notifier
-	Watchdog        *watchdog.Watchdog
 	Analyzer        *analyzer.Analyzer
 	Agent           *agent.Agent
 	Retention       *retention.RetentionManager
@@ -124,9 +128,9 @@ func initComponents(appConfig *config.Config) (*Components, error) {
 		log.Printf("告警通知器启动失败: %v", err)
 	}
 
-	// 初始化看门狗
-	watchdogInstance := watchdog.NewWatchdog(monitorInstance)
-	watchdogInstance.Start()
+	// 看门狗已禁用（功能与资源监控器重复，且阈值500MB永远不会触发）
+	// watchdogInstance := watchdog.NewWatchdog(monitorInstance)
+	// watchdogInstance.Start()
 
 	// 初始化分析引擎
 	analyzerInstance := analyzer.NewAnalyzer(appConfig)
@@ -141,7 +145,7 @@ func initComponents(appConfig *config.Config) (*Components, error) {
 		return nil, fmt.Errorf("数据库初始化失败: %v", err)
 	}
 
-	// 启动认证清理任务
+	// 启动认证清理任务（24小时清理一次，极低频率）
 	authManager := auth.NewAuthManager()
 	authManager.StartCleanupTask(24 * time.Hour)
 
@@ -152,19 +156,20 @@ func initComponents(appConfig *config.Config) (*Components, error) {
 		return nil, fmt.Errorf("数据队列初始化失败: %v", err)
 	}
 
-	// 初始化Agent
-	agentInstance, err := agent.NewAgent(appConfig, monitorInstance)
-	if err != nil {
-		log.Printf("Agent初始化失败: %v", err)
-	}
+	// 初始化Agent（已禁用，减少 CPU 占用）
+	// agentInstance, err := agent.NewAgent(appConfig, monitorInstance)
+	// if err != nil {
+	// 	log.Printf("Agent初始化失败: %v", err)
+	// }
+	var agentInstance *agent.Agent
 
-	// 初始化数据保留策略管理器
+	// 初始化数据保留策略管理器（低频：每5分钟检查一次）
 	retentionManager := retention.NewRetentionManager(database.Table, appConfig)
 	if err := retentionManager.Start(); err != nil {
 		log.Printf("数据保留策略管理器启动失败: %v", err)
 	}
 
-	// 初始化资源监控器
+	// 初始化资源监控器（低频：每30秒检查一次）
 	resourceMonitor := resource.NewResourceMonitor(appConfig, monitorInstance)
 	if err := resourceMonitor.Start(); err != nil {
 		log.Printf("资源监控器启动失败: %v", err)
@@ -200,7 +205,6 @@ func initComponents(appConfig *config.Config) (*Components, error) {
 	return &Components{
 		Monitor:         monitorInstance,
 		AlertNotifier:   alertNotifier,
-		Watchdog:        watchdogInstance,
 		Analyzer:        analyzerInstance,
 		Agent:           agentInstance,
 		Retention:       retentionManager,
@@ -279,10 +283,10 @@ func waitForShutdown(c *Components) {
 		c.SyncManager.Stop()
 	}
 
-	// 停止看门狗
-	if c.Watchdog != nil {
-		c.Watchdog.Stop()
-	}
+	// 看门狗已禁用
+	// if c.Watchdog != nil {
+	// 	c.Watchdog.Stop()
+	// }
 
 	// 断开MQTT连接
 	if c.MQTTClient != nil {

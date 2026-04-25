@@ -560,17 +560,30 @@
             <div class="card">
                 <div class="card-body">
                     <h5 class="card-title mb-4" data-i18n="mqtt.status">📡 MQTT Status</h5>
-                    <div class="row gap-2">
-                        <div class="col-6">
-                            <div class="status-item">
-                                <div class="status-value" id="mqttReceived">0</div>
-                                <div class="status-label" data-i18n="received">Received</div>
-                            </div>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <span class="metric-label" data-i18n="total.messages">Total Messages</span>
+                            <span class="metric-value" id="mqttTotal">0</span>
                         </div>
-                        <div class="col-6">
-                            <div class="status-item">
-                                <div class="status-value" id="mqttProcessed">0</div>
-                                <div class="status-label" data-i18n="processed">Processed</div>
+                        <div class="d-flex justify-content-between align-items-center mb-3" style="background: rgba(76,175,80,0.15); padding: 10px 14px; border-radius: 8px; border-left: 3px solid #4CAF50;">
+                            <span class="metric-label" style="color: #4CAF50; font-weight: 600; font-size: 1.05em;">
+                                <i class="status-dot online" style="width: 8px; height: 8px; display: inline-block; background: #4CAF50;"></i>
+                                <span data-i18n="records.stored">Records Stored</span>
+                            </span>
+                            <span class="metric-value" id="totalRecordsStored" style="color: #4CAF50; font-weight: 700; font-size: 1.3em;">0</span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-3" style="background: rgba(255,152,0,0.1); padding: 8px 12px; border-radius: 6px;">
+                            <span class="metric-label" style="color: var(--warning-color);" data-i18n="filtered">Filtered</span>
+                            <span class="metric-value" id="mqttFiltered" style="color: var(--warning-color);">0</span>
+                        </div>
+                        <div class="mb-2" style="font-size: 11px; color: var(--text-dark); padding-left: 12px;">
+                            <div class="d-flex justify-content-between">
+                                <span data-i18n="filtered.non.event">Non-Event Messages</span>
+                                <span id="nonEventCount">0</span>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <span data-i18n="filtered.invalid">Invalid/Missing Values</span>
+                                <span id="invalidValueCount">0</span>
                             </div>
                         </div>
                     </div>

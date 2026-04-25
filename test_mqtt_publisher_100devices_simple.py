@@ -130,17 +130,65 @@ def main():
 
         devices = generate_devices()
         print(f"All {TOTAL_DEVICES} devices initialized successfully!")
+        print(f"PRODUCTION MODE: ~200 msg/s (real-world high load)")
+        print(f"Simulating 100 devices with 500ms reporting interval")
+        print(f"Sending data from {TOTAL_DEVICES} devices...")
+
+        # 预生成消息模板（减少 CPU 消耗）
+        message_templates = []
+        for device_type, device_id in devices:
+            topic = device_type["topic"].format(int(device_id.split("-")[-1]))
+            # 生成基础消息模板
+            value = round(random.uniform(device_type["min"], device_type["max"]), 2)
+            message_template = {
+                "messageType": "event",
+                "origin": int(time.time() * 1000000000),
+                "payload": {
+                    "id": f"event-{device_id}",
+                    "deviceName": device_id,
+                    "profileName": f"{device_type['type']}-profile",
+                    "sourceName": f"{device_type['type']}-source",
+                    "origin": int(time.time() * 1000000000),
+                    "readings": [
+                        {
+                            "id": f"reading-{device_id}",
+                            "origin": int(time.time() * 1000000000),
+                            "deviceName": device_id,
+                            "resourceName": device_type["type"],
+                            "profileName": f"{device_type['type']}-profile",
+                            "valueType": "Float64",
+                            "value": str(value)
+                        }
+                    ]
+                }
+            }
+            message_templates.append((topic, message_template, value))
+
+        batch_count = 0
+        start_time = time.time()
 
         while True:
-            # 随机选择一个设备发送数据
-            device_type, device_id = random.choice(devices)
-            topic = device_type["topic"].format(int(device_id.split("-")[-1]))
-            message = generate_mqtt_message(device_type, device_id)
+            # 生产环境：所有设备每 500ms 上报一次（模拟真实场景的高负载）
+            for topic, template, base_value in message_templates:
+                # 简单更新 value（±5% 波动）
+                new_value = round(base_value * (1 + random.uniform(-0.05, 0.05)), 2)
+                template["payload"]["readings"][0]["value"] = str(new_value)
+                template["payload"]["origin"] = int(time.time() * 1000000000)
+                template["origin"] = int(time.time() * 1000000000)
+                
+                client.publish(topic, json.dumps(template), qos=1)
+            
+            batch_count += 1
+            elapsed = time.time() - start_time
+            
+            # 每 10 批显示一次统计（约每 5 秒显示一次）
+            if batch_count % 10 == 0:
+                msg_count = batch_count * TOTAL_DEVICES
+                rate = msg_count / elapsed
+                print(f"  Sent {msg_count} messages in {elapsed:.1f}s ({rate:.0f} msg/s)")
 
-            client.publish(topic, json.dumps(message), qos=1)
-
-            # 每秒钟发送多个设备的数据
-            time.sleep(0.1)  # 100ms per device, ~10 devices per second
+            # 生产环境：500ms 间隔，约 200 msg/s
+            time.sleep(0.5)
 
     except Exception as e:
         print(f"Error: {e}")

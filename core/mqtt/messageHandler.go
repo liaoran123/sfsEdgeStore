@@ -4,46 +4,51 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"runtime/debug"
 	"sfsEdgeStore/common"
 	"sfsEdgeStore/core/database"
 	"sfsEdgeStore/core/edgex"
+	"sync/atomic"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
-// messageHandler 适配器处理收到的EdgeX消息
-/*
-- messageHandler 函数是通过 MQTT 客户端订阅主题时设置的回调函数触发的，用于处理收到的EdgeX消息
-- subscribeTopics 函数中，MQTT 客户端会订阅指定的主题
-- 订阅时，会调用 mqttClient.Subscribe 方法，并将 c.messageHandler() 作为回调函数传入
-*/
+var flushCount atomic.Int64
+
 func (c *Client) messageHandler() mqtt.MessageHandler {
 	return func(client mqtt.Client, msg mqtt.Message) {
-		// 增加MQTT消息接收计数
 		c.recordMessageReceived(len(msg.Payload()))
 
-		//// 将消息发送到 Worker 队列，由固定数量的 Worker 处理
-		select {
-		case c.messageQueue <- msg:
-			// 消息成功入队
-		default:
-			// 队列已满，丢弃消息或记录警告
+		event, err := edgex.ProcessMessage(msg.Payload())
+		if err != nil {
+			log.Printf("Failed to process message: %v", err)
+			return
+		}
+
+		if event == nil {
 			if c.monitor != nil {
-				c.monitor.RecordError("queue_full", "Message queue is full, dropping message")
+				c.monitor.IncrementMQTTMessagesFiltered()
 			}
+			return
+		}
+
+		if !c.isDeviceAllowed(event.DeviceName) {
+			log.Printf("Device limit reached, rejecting data from device: %s", event.DeviceName)
+			if c.monitor != nil {
+				c.monitor.RecordError("device_limit_reached", fmt.Sprintf("Device %s rejected due to limit", event.DeviceName))
+				c.monitor.IncrementMQTTMessagesFiltered()
+			}
+			return
+		}
+
+		records := c.processReadings(event)
+		if len(records) > 0 {
+			c.enqueueRecords(records)
 		}
 	}
 }
 
-// messageWorker 工作协程，从消息队列中接收并处理消息
-func (c *Client) messageWorker(workerID int) {
-	for msg := range c.messageQueue {
-		c.processMessageAsync(msg)
-	}
-}
-
-// recordMessageReceived 记录消息接收情况
 func (c *Client) recordMessageReceived(payloadSize int) {
 	if c.monitor != nil {
 		c.monitor.IncrementMQTTMessagesReceived()
@@ -51,73 +56,41 @@ func (c *Client) recordMessageReceived(payloadSize int) {
 	}
 }
 
-// processMessageAsync 异步处理MQTT消息
-func (c *Client) processMessageAsync(msg mqtt.Message) {
-	// 使用edgex包处理消息
-	event, err := edgex.ProcessMessage(msg.Payload())
-	if err != nil {
-		log.Printf("Failed to process message: %v", err)
-		return
-	}
-
-	// 如果消息类型不是event，event会为nil
-	if event == nil {
-		return
-	}
-
-	// 检查设备数量限制（仅对免费用户生效）
-	if !c.isDeviceAllowed(event.DeviceName) {
-		log.Printf("Device limit reached, rejecting data from device: %s", event.DeviceName)
-		if c.monitor != nil {
-			c.monitor.RecordError("device_limit_reached", fmt.Sprintf("Device %s rejected due to limit", event.DeviceName))
-		}
-		return
-	}
-
-	// 处理读数
-	records := c.processReadings(event)
-
-	// 批量存储到 sfsDb
-	if len(records) > 0 {
-		c.storeData(records, event.DeviceName)
-	}
-}
-
-// processReadings 处理设备读数
 func (c *Client) processReadings(event *edgex.EdgeXEvent) []*map[string]any {
-	// 预分配切片容量，避免动态扩容
 	records := make([]*map[string]any, 0, len(event.Readings))
 
-	// 处理每个读数
 	for _, reading := range event.Readings {
-		// 解析值的类型
 		value := common.ParseValue(reading.Value)
 
-		// 更新设备状态
+		if isInvalidValue(value) {
+			if c.monitor != nil {
+				c.monitor.RecordError("invalid_value_discarded", fmt.Sprintf("Device: %s, Reading: %s, Value: %v", event.DeviceName, reading.ResourceName, reading.Value))
+				c.monitor.IncrementMQTTMessagesFiltered()
+			}
+			continue
+		}
+
 		c.updateDeviceStatus(event.DeviceName, reading.ResourceName, value)
 
-		// 数据过滤
 		if !c.shouldStoreData(event.DeviceName, reading.ResourceName, value) {
 			continue
 		}
 
-		// 从对象池获取map，减少内存分配
-		data := objPool.GetMap()
-
-		// 准备数据
 		metadataStr := ""
 		if reading.Metadata != nil {
 			metadataStr = string(reading.Metadata)
 		}
 
-		data["id"] = reading.ID
-		data["deviceName"] = event.DeviceName // 设备名称已经在ProcessMessage中格式化
-		data["reading"] = reading.ResourceName
-		data["value"] = value
-		data["valueType"] = reading.ValueType
-		data["baseType"] = reading.BaseType
-		data["timestamp"] = reading.Origin // 纳秒级时间戳，类型为 int64
-		data["metadata"] = metadataStr
+		data := map[string]any{
+			"id":         reading.ID,
+			"deviceName": event.DeviceName,
+			"reading":    reading.ResourceName,
+			"value":      value,
+			"valueType":  reading.ValueType,
+			"baseType":   reading.BaseType,
+			"timestamp":  reading.Origin,
+			"metadata":   metadataStr,
+		}
 
 		records = append(records, &data)
 	}
@@ -125,10 +98,93 @@ func (c *Client) processReadings(event *edgex.EdgeXEvent) []*map[string]any {
 	return records
 }
 
-// updateDeviceStatus 更新设备状态
+func (c *Client) enqueueRecords(newRecords []*map[string]any) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.pendingRecords = append(c.pendingRecords, newRecords...)
+
+	// 检查缓冲区大小：如果积累的记录数超过 batchSize 或者
+	// 等待时间超过 batchTime，则立即触发写入
+	// 这样可以避免 LevelDB 的 BlockCache 积累过多数据
+	shouldFlush := len(c.pendingRecords) >= batchSize ||
+		time.Since(c.lastBatchTime) >= batchTime*time.Millisecond
+
+	if shouldFlush {
+		records := c.pendingRecords
+		c.pendingRecords = make([]*map[string]any, 0, batchSize)
+		c.lastBatchTime = time.Now()
+		if c.batchTimer != nil {
+			c.batchTimer.Stop()
+			c.batchTimer = nil
+		}
+		c.writePool.Submit(func() {
+			c.flushRecords(records)
+		})
+		return
+	}
+
+	if c.batchTimer == nil {
+		c.batchTimer = time.AfterFunc(batchTime*time.Millisecond, func() {
+			c.mu.Lock()
+			if len(c.pendingRecords) > 0 {
+				records := c.pendingRecords
+				c.pendingRecords = make([]*map[string]any, 0, batchSize)
+				c.lastBatchTime = time.Now()
+				c.batchTimer = nil
+				c.mu.Unlock()
+				c.writePool.Submit(func() {
+					c.flushRecords(records)
+				})
+			} else {
+				c.batchTimer = nil
+				c.mu.Unlock()
+			}
+		})
+	}
+}
+
+func (c *Client) flushRecords(records []*map[string]any) {
+	if len(records) == 0 {
+		return
+	}
+
+	if c.monitor != nil {
+		c.monitor.IncrementDatabaseOperations()
+		c.monitor.IncrementTotalRecordsStored(int64(len(records)))
+		c.monitor.IncrementDataStoredBytes(int64(len(records) * 100))
+	}
+
+	err := database.BatchInsertWithRetry(database.Table, records, 3, 2*time.Second)
+	if err != nil {
+		c.handleStorageError(err, records)
+		return
+	}
+
+	if c.monitor != nil {
+		c.monitor.IncrementMQTTMessagesProcessed()
+	}
+
+	// 每 50 次写入后手动触发 GC 并释放内存给 OS
+	count := flushCount.Add(1)
+	if count%50 == 0 {
+		debug.FreeOSMemory()
+	}
+
+	if c.broadcaster != nil && len(records) > 0 {
+		c.broadcastData("device_data", map[string]any{
+			"deviceName": (*records[0])["deviceName"],
+			"records":    records,
+		})
+	}
+
+	if c.analyzer != nil && c.analyzer.IsEnabled() && len(records) <= 50 {
+		c.analyzeData(records, "")
+	}
+}
+
 func (c *Client) updateDeviceStatus(deviceName, resourceName string, value interface{}) {
 	if c.monitor != nil {
-		// 尝试将值转换为float64用于监控
 		floatValue := 0.0
 		switch v := value.(type) {
 		case float64:
@@ -142,7 +198,6 @@ func (c *Client) updateDeviceStatus(deviceName, resourceName string, value inter
 	}
 }
 
-// shouldStoreData 检查是否应该存储数据
 func (c *Client) shouldStoreData(deviceName, resourceName string, value interface{}) bool {
 	if c.filterManager != nil {
 		if !c.filterManager.ShouldStore(deviceName, resourceName, value) {
@@ -152,96 +207,72 @@ func (c *Client) shouldStoreData(deviceName, resourceName string, value interfac
 	return true
 }
 
-// handleStorageError 处理数据存储错误
+func isInvalidValue(value any) bool {
+	switch v := value.(type) {
+	case string:
+		return v == "" || v == "invalid_value"
+	}
+	return false
+}
+
 func (c *Client) handleStorageError(err error, records []*map[string]any) {
-	// 记录错误到监控系统
 	if c.monitor != nil {
 		c.monitor.RecordError("storage_error", err.Error())
 	}
 
-	// 入队重试
+	if isInvalidData(records) {
+		log.Printf("Discarding invalid data (retry won't help): %v", err)
+		return
+	}
+
 	if c.dataQueue != nil {
 		c.dataQueue.Enqueue(records)
 	}
-
-	// 归还map对象到池中
-	for _, data := range records {
-		objPool.PutMap(*data)
-	}
 }
 
-// broadcastData 广播数据到 WebSocket
-func (c *Client) broadcastData(dataType string, data interface{}) {
+func isInvalidData(records []*map[string]any) bool {
+	for _, record := range records {
+		val, ok := (*record)["value"]
+		if !ok {
+			return true
+		}
+		switch v := val.(type) {
+		case string:
+			if v == "" || v == "invalid_value" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (c *Client) broadcastData(dataType string, data any) {
 	if c.broadcaster == nil {
 		return
 	}
 
-	// 准备广播数据
-	broadcastData := map[string]interface{}{
+	broadcastData := map[string]any{
 		"type":      dataType,
 		"data":      data,
 		"timestamp": time.Now().UnixNano(),
 	}
 
-	// 序列化为 JSON
 	jsonData, err := json.Marshal(broadcastData)
 	if err != nil {
 		log.Printf("Failed to marshal broadcast data: %v", err)
 		return
 	}
 
-	// 广播数据
 	c.broadcaster.Broadcast(jsonData)
 }
 
-// storeData 存储数据到数据库
-func (c *Client) storeData(records []*map[string]any, deviceName string) {
-	// 增加数据库操作计数
-	if c.monitor != nil {
-		c.monitor.IncrementDatabaseOperations()
-	}
-
-	// 使用重试机制插入数据
-	err := database.BatchInsertWithRetry(database.Table, records, 3, 2*time.Second)
-	if err != nil {
-		c.handleStorageError(err, records)
-		return
-	}
-
-	// 增加MQTT消息处理计数
-	if c.monitor != nil {
-		c.monitor.IncrementMQTTMessagesProcessed()
-		// 增加数据存储字节数
-		c.monitor.IncrementDataStoredBytes(int64(len(records) * 100)) // 估算每条记录约100字节
-	}
-
-	// 推送设备数据
-	if len(records) > 0 {
-		c.broadcastData("device_data", map[string]interface{}{
-			"deviceName": deviceName,
-			"records":    records,
-		})
-	}
-
-	// 分析数据
-	c.analyzeData(records, deviceName)
-
-	// 归还map对象到池中
-	for _, data := range records {
-		objPool.PutMap(*data)
-	}
-}
-
-// analyzeData 分析数据
 func (c *Client) analyzeData(records []*map[string]any, deviceName string) {
 	if c.analyzer == nil || !c.analyzer.IsEnabled() {
 		return
 	}
 
-	// 按reading分组分析数据
-	readingDataMap := make(map[string][]map[string]interface{}, len(records))
+	readingDataMap := make(map[string][]map[string]any, len(records))
 	for _, record := range records {
-		// 从记录中获取reading信息
 		readingName, ok := (*record)["reading"].(string)
 		if !ok {
 			continue
@@ -249,12 +280,9 @@ func (c *Client) analyzeData(records []*map[string]any, deviceName string) {
 		readingDataMap[readingName] = append(readingDataMap[readingName], *record)
 	}
 
-	// 对每个reading进行分析
 	for readingName, analysisData := range readingDataMap {
-		// 分析数据
 		results, alerts := c.analyzer.Analyze(analysisData, deviceName, readingName)
 
-		// 处理告警
 		if len(alerts) > 0 {
 			for _, alert := range alerts {
 				if c.monitor != nil {
@@ -262,14 +290,12 @@ func (c *Client) analyzeData(records []*map[string]any, deviceName string) {
 				}
 			}
 
-			// 推送告警数据到 WebSocket（Web 端已展示，无需日志）
-			c.broadcastData("alerts", map[string]interface{}{
+			c.broadcastData("alerts", map[string]any{
 				"deviceName": deviceName,
 				"alerts":     alerts,
 			})
 		}
 
-		// 及时释放分析结果
 		_ = results
 	}
 }

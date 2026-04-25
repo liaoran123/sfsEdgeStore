@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"sfsEdgeStore/pathutil"
+
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
@@ -97,19 +98,19 @@ type Config struct {
 	SimulatorIntervalMin int  `json:"simulator_interval_min" env:"EDGEX_SIMULATOR_INTERVAL_MIN"`
 	SimulatorIntervalMax int  `json:"simulator_interval_max" env:"EDGEX_SIMULATOR_INTERVAL_MAX"`
 	// 许可证配置
-	LicenseType        string             `json:"license_type" env:"EDGEX_LICENSE_TYPE"` // "community" | "business" | "enterprise"
-	LicenseKey         string             `json:"license_key" env:"EDGEX_LICENSE_KEY"`   // 许可证密钥
+	LicenseType string `json:"license_type" env:"EDGEX_LICENSE_TYPE"` // "community" | "business" | "enterprise"
+	LicenseKey  string `json:"license_key" env:"EDGEX_LICENSE_KEY"`   // 许可证密钥
 	// 行业模板配置
-	IndustryTemplate   string             `json:"industry_template" env:"EDGEX_INDUSTRY_TEMPLATE"` // 行业模板
+	IndustryTemplate string `json:"industry_template" env:"EDGEX_INDUSTRY_TEMPLATE"` // 行业模板
 	// 设备配置
-	Devices            []map[string]interface{} `json:"devices"`
+	Devices []map[string]interface{} `json:"devices"`
 	// 告警配置
-	Alerts             []map[string]interface{} `json:"alerts"`
+	Alerts []map[string]interface{} `json:"alerts"`
 	// 基线配置
-	Baseline           map[string]interface{}   `json:"baseline"`
+	Baseline map[string]interface{} `json:"baseline"`
 	// 安全红线配置
-	SafetyLimits       map[string]interface{}   `json:"safety_limits"`
-	EnterpriseFeatures EnterpriseFeatures `json:"enterprise_features"`                   // 功能开关
+	SafetyLimits       map[string]interface{} `json:"safety_limits"`
+	EnterpriseFeatures EnterpriseFeatures     `json:"enterprise_features"` // 功能开关
 	// 自定义订阅主题
 	CustomTopics []string `json:"custom_topics"` // 自定义MQTT订阅主题
 }
@@ -280,10 +281,10 @@ func Load() (*Config, error) {
 		DataSyncInterval:      30,
 		DataSyncMaxRetryCount: 5,
 		// 资源使用监控默认值
-		EnableResourceMonitoring: false,
-		MaxMemoryMB:              50, // 50MB 内存限制
-		MaxCPUPercent:            5,  // 5% CPU 限制
-		ResourceMonitorInterval:  10, // 每10秒检查一次
+		EnableResourceMonitoring: false, // 关闭资源监控（减少 CPU）
+		MaxMemoryMB:              45,    // 45MB 内存限制
+		MaxCPUPercent:            5,     // 5% CPU 限制
+		ResourceMonitorInterval:  30,    // 每30秒检查一次
 		// 设备异常监控配置
 		DeviceOfflineThreshold: 300, // 设备离线检测阈值（秒）
 		DataAnomalyThreshold:   50,  // 数据突变检测阈值（百分比）
@@ -397,7 +398,7 @@ type License struct {
 // 宽限期（天） - 到期后 30 天内依然有温馨提示
 const GracePeriodDays = 30
 
-	// 许可证文件路径
+// 许可证文件路径
 const LicenseFilePath = "license.json"
 
 // GetLicenseFilePath 获取许可证文件绝对路径
@@ -411,7 +412,7 @@ func LoadLicense() (*License, error) {
 	if err != nil {
 		licensePath = LicenseFilePath
 	}
-	
+
 	if _, err := os.Stat(licensePath); err == nil {
 		data, err := os.ReadFile(licensePath)
 		if err != nil {
@@ -439,7 +440,7 @@ func SaveLicense(lic *License) error {
 	if err != nil {
 		licensePath = LicenseFilePath
 	}
-	
+
 	data, err := json.MarshalIndent(lic, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal license: %w", err)

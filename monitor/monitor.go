@@ -304,6 +304,8 @@ type InternalMetrics struct {
 type InternalApplicationMetrics struct {
 	MQTTMessagesReceived  atomic.Int64
 	MQTTMessagesProcessed atomic.Int64
+	MQTTMessagesFiltered  atomic.Int64 // 被过滤的消息数（非event类型、无效数据等）
+	TotalRecordsStored    atomic.Int64 // 实际存储到数据库的记录总数
 	HTTPRequests          atomic.Int64
 	DatabaseOperations    atomic.Int64
 	Errors                atomic.Int64
@@ -336,7 +338,9 @@ type DatabaseMetrics struct {
 // ApplicationMetrics 应用指标（使用普通类型用于导出）
 type ApplicationMetrics struct {
 	MQTTMessagesReceived  int64 `json:"mqtt_messages_received"`  // MQTT消息接收计数
-	MQTTMessagesProcessed int64 `json:"mqtt_messages_processed"` // MQTT消息处理计数
+	MQTTMessagesProcessed int64 `json:"mqtt_messages_processed"` // MQTT消息处理计数（批次数）
+	MQTTMessagesFiltered  int64 `json:"mqtt_messages_filtered"`  // 被过滤的消息数
+	TotalRecordsStored    int64 `json:"total_records_stored"`    // 实际存储的记录总数
 	HTTPRequests          int64 `json:"http_requests"`           // HTTP请求计数
 	DatabaseOperations    int64 `json:"database_operations"`     // 数据库操作计数
 	Errors                int64 `json:"errors"`                  // 错误计数
@@ -401,6 +405,8 @@ func (m *Monitor) toExportedMetrics() Metrics {
 		Application: ApplicationMetrics{
 			MQTTMessagesReceived:  m.metrics.Application.MQTTMessagesReceived.Load(),
 			MQTTMessagesProcessed: m.metrics.Application.MQTTMessagesProcessed.Load(),
+			MQTTMessagesFiltered:  m.metrics.Application.MQTTMessagesFiltered.Load(),
+			TotalRecordsStored:    m.metrics.Application.TotalRecordsStored.Load(),
 			HTTPRequests:          m.metrics.Application.HTTPRequests.Load(),
 			DatabaseOperations:    m.metrics.Application.DatabaseOperations.Load(),
 			Errors:                m.metrics.Application.Errors.Load(),
@@ -488,6 +494,16 @@ func (m *Monitor) IncrementMQTTMessagesReceived() {
 // IncrementMQTTMessagesProcessed 增加MQTT消息处理计数
 func (m *Monitor) IncrementMQTTMessagesProcessed() {
 	m.metrics.Application.MQTTMessagesProcessed.Add(1)
+}
+
+// IncrementMQTTMessagesFiltered 增加MQTT消息过滤计数
+func (m *Monitor) IncrementMQTTMessagesFiltered() {
+	m.metrics.Application.MQTTMessagesFiltered.Add(1)
+}
+
+// IncrementTotalRecordsStored 增加实际存储记录计数
+func (m *Monitor) IncrementTotalRecordsStored(count int64) {
+	m.metrics.Application.TotalRecordsStored.Add(count)
 }
 
 // IncrementHTTPRequests 增加HTTP请求计数
@@ -805,6 +821,12 @@ func (m *Monitor) GetDeviceStatus() map[string]DeviceStatus {
 func (m *Monitor) RecordError(errorType, message string) {
 	m.IncrementErrors()
 
+	// 高频错误（无效值）不记录为告警，只记录计数
+	if errorType == "invalid_value_discarded" {
+		// 只计数，不添加到告警列表
+		return
+	}
+
 	// 创建新告警
 	alert := common.Alert{
 		Type:      errorType,
@@ -817,6 +839,12 @@ func (m *Monitor) RecordError(errorType, message string) {
 	// 添加到告警列表（加锁保护）
 	m.mutex.Lock()
 	m.alerts = append(m.alerts, alert)
+
+	// 限制告警列表大小（降低到 1000）
+	if len(m.alerts) > 1000 {
+		m.alerts = m.alerts[len(m.alerts)-1000:]
+	}
+
 	m.mutex.Unlock()
 
 	log.Printf("Critical error recorded: %s - %s", errorType, message)
@@ -905,14 +933,16 @@ func (m *Monitor) CheckAlerts() []common.Alert {
 	m.mutex.Lock()
 	m.alerts = append(m.alerts, newAlerts...)
 
-	// 限制告警列表大小，防止内存泄漏（最多保留10000条）
-	if len(m.alerts) > 10000 {
-		m.alerts = m.alerts[len(m.alerts)-10000:]
+	// 限制告警列表大小，防止内存泄漏（降低到1000条）
+	if len(m.alerts) > 1000 {
+		m.alerts = m.alerts[len(m.alerts)-1000:]
 	}
 
 	// 更新上次收集的指标值（逐个存储，不复制整个结构体）
 	m.lastMetrics.Application.MQTTMessagesReceived.Store(m.metrics.Application.MQTTMessagesReceived.Load())
 	m.lastMetrics.Application.MQTTMessagesProcessed.Store(m.metrics.Application.MQTTMessagesProcessed.Load())
+	m.lastMetrics.Application.MQTTMessagesFiltered.Store(m.metrics.Application.MQTTMessagesFiltered.Load())
+	m.lastMetrics.Application.TotalRecordsStored.Store(m.metrics.Application.TotalRecordsStored.Load())
 	m.lastMetrics.Application.HTTPRequests.Store(m.metrics.Application.HTTPRequests.Load())
 	m.lastMetrics.Application.DatabaseOperations.Store(m.metrics.Application.DatabaseOperations.Load())
 	m.lastMetrics.Application.Errors.Store(m.metrics.Application.Errors.Load())
