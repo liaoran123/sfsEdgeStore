@@ -12,11 +12,11 @@ const config = {
   favicon: 'img/favicon.ico',
 
   // Set the production URL for the site
-  url: 'https://your-domain.com',
-  baseUrl: '/',
+  url: 'https://liaoran123.github.io',
+  baseUrl: '/sfsEdgeStore/',
 
   // GitHub pages deployment config
-  organizationName: 'your-org',
+  organizationName: 'liaoran123',
   projectName: 'sfsEdgeStore',
 
   // Enable trailing slashes
