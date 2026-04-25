@@ -2,6 +2,10 @@
 edgex_data/
 test_*_db/
 
+# Node.js
+node_modules/
+docs/node_modules/
+
 # Database files
 *.ldb
 *.log
