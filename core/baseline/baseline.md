@@ -40,18 +40,18 @@ type Baseline struct {
 
 **字段说明**：
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| DeviceName | string | 设备名称 |
-| ReadingName | string | 读数名称（如"GetValue"） |
-| Average | float64 | 读数的平均值 |
-| StdDev | float64 | 读数的标准差 |
-| MinValue | float64 | 读数的最小值 |
-| MaxValue | float64 | 读数的最大值 |
-| SampleCount | int | 用于计算的样本数量 |
-| LastUpdated | time.Time | 基线最后更新时间 |
-| LearningPeriod | int | 学习期（天），用于控制数据收集时间范围 |
-| Enabled | bool | 基线是否启用 |
+| 字段             | 类型        | 说明                  |
+| -------------- | --------- | ------------------- |
+| DeviceName     | string    | 设备名称                |
+| ReadingName    | string    | 读数名称（如"GetValue"）   |
+| Average        | float64   | 读数的平均值              |
+| StdDev         | float64   | 读数的标准差              |
+| MinValue       | float64   | 读数的最小值              |
+| MaxValue       | float64   | 读数的最大值              |
+| SampleCount    | int       | 用于计算的样本数量           |
+| LastUpdated    | time.Time | 基线最后更新时间            |
+| LearningPeriod | int       | 学习期（天），用于控制数据收集时间范围 |
+| Enabled        | bool      | 基线是否启用              |
 
 ### 2.2 Manager 结构体
 
@@ -65,17 +65,18 @@ type Manager struct {
 
 **字段说明**：
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| baselines | map[string]Baseline | 基线缓存，键格式为 "deviceName:readingName" |
-| learningPeriod | int | 学习期（天），用于控制数据收集时间范围 |
-| enabled | bool | 是否启用基线管理 |
+| 字段             | 类型                   | 说明                                 |
+| -------------- | -------------------- | ---------------------------------- |
+| baselines      | map\[string]Baseline | 基线缓存，键格式为 "deviceName:readingName" |
+| learningPeriod | int                  | 学习期（天），用于控制数据收集时间范围                |
+| enabled        | bool                 | 是否启用基线管理                           |
 
 ## 3. 函数说明
 
 ### 3.1 构造函数
 
 #### NewManager
+
 ```go
 func NewManager(learningPeriod int, enabled bool) *Manager
 ```
@@ -83,16 +84,18 @@ func NewManager(learningPeriod int, enabled bool) *Manager
 **功能**：创建基线管理器实例
 
 **参数**：
+
 - `learningPeriod`: 学习期（天）
 - `enabled`: 是否启用基线管理
 
 **返回值**：初始化好的Manager指针
 
----
+***
 
 ### 3.2 核心功能
 
 #### CalculateBaseline
+
 ```go
 func (m *Manager) CalculateBaseline(deviceName, readingName string) (Baseline, error)
 ```
@@ -100,10 +103,12 @@ func (m *Manager) CalculateBaseline(deviceName, readingName string) (Baseline, e
 **功能**：计算设备读数的基线
 
 **参数**：
+
 - `deviceName`: 设备名称
 - `readingName`: 读数名称
 
 **处理逻辑**：
+
 1. 检查是否启用基线管理
 2. 生成基线键（"deviceName:readingName"）
 3. 检查缓存中是否已有基线且未过期（24小时内）
@@ -112,10 +117,12 @@ func (m *Manager) CalculateBaseline(deviceName, readingName string) (Baseline, e
 6. 缓存并返回基线
 
 **返回值**：
+
 - `Baseline`: 计算的基线
 - `error`: 错误对象（成功时为nil）
 
 #### calculateStatistics
+
 ```go
 func (m *Manager) calculateStatistics(records record.Records, deviceName, readingName string) (Baseline, error)
 ```
@@ -123,11 +130,13 @@ func (m *Manager) calculateStatistics(records record.Records, deviceName, readin
 **功能**：计算统计数据
 
 **参数**：
+
 - `records`: 从数据库查询的记录
 - `deviceName`: 设备名称
 - `readingName`: 读数名称
 
 **处理逻辑**：
+
 1. 检查记录是否为空
 2. 计算总和、最小值、最大值
 3. 计算平均值
@@ -135,14 +144,16 @@ func (m *Manager) calculateStatistics(records record.Records, deviceName, readin
 5. 构建并返回Baseline对象
 
 **返回值**：
+
 - `Baseline`: 计算的基线
 - `error`: 错误对象（成功时为nil）
 
----
+***
 
 ### 3.3 阈值和异常检测
 
 #### GetDynamicThreshold
+
 ```go
 func (m *Manager) GetDynamicThreshold(deviceName, readingName string, stdMultiplier float64) (float64, float64, error)
 ```
@@ -150,22 +161,26 @@ func (m *Manager) GetDynamicThreshold(deviceName, readingName string, stdMultipl
 **功能**：获取动态阈值
 
 **参数**：
+
 - `deviceName`: 设备名称
 - `readingName`: 读数名称
 - `stdMultiplier`: 标准差倍数
 
 **处理逻辑**：
+
 1. 调用CalculateBaseline获取基线
 2. 计算上下阈值：
    - 上阈值 = 平均值 + (标准差 × 倍数)
    - 下阈值 = 平均值 - (标准差 × 倍数)
 
 **返回值**：
+
 - `float64`: 下阈值
 - `float64`: 上阈值
 - `error`: 错误对象（成功时为nil）
 
 #### CheckAnomaly
+
 ```go
 func (m *Manager) CheckAnomaly(deviceName, readingName string, value float64, stdMultiplier float64) (bool, error)
 ```
@@ -173,24 +188,28 @@ func (m *Manager) CheckAnomaly(deviceName, readingName string, value float64, st
 **功能**：检查是否异常
 
 **参数**：
+
 - `deviceName`: 设备名称
 - `readingName`: 读数名称
 - `value`: 当前值
 - `stdMultiplier`: 标准差倍数
 
 **处理逻辑**：
+
 1. 调用GetDynamicThreshold获取阈值
 2. 检查当前值是否超出阈值范围
 
 **返回值**：
+
 - `bool`: 是否异常（超出阈值为true）
 - `error`: 错误对象（成功时为nil）
 
----
+***
 
 ### 3.4 基线管理
 
 #### GetBaseline
+
 ```go
 func (m *Manager) GetBaseline(deviceName, readingName string) (Baseline, bool)
 ```
@@ -198,14 +217,17 @@ func (m *Manager) GetBaseline(deviceName, readingName string) (Baseline, bool)
 **功能**：获取指定设备和读数的基线
 
 **参数**：
+
 - `deviceName`: 设备名称
 - `readingName`: 读数名称
 
 **返回值**：
+
 - `Baseline`: 基线对象
 - `bool`: 是否存在
 
 #### UpdateBaseline
+
 ```go
 func (m *Manager) UpdateBaseline(baseline Baseline)
 ```
@@ -213,9 +235,11 @@ func (m *Manager) UpdateBaseline(baseline Baseline)
 **功能**：更新基线
 
 **参数**：
+
 - `baseline`: 基线对象
 
 #### ListBaselines
+
 ```go
 func (m *Manager) ListBaselines() map[string]Baseline
 ```
@@ -223,6 +247,7 @@ func (m *Manager) ListBaselines() map[string]Baseline
 **功能**：列出所有基线
 
 **返回值**：
+
 - `map[string]Baseline`: 所有基线的映射
 
 ## 4. 算法说明
@@ -230,11 +255,13 @@ func (m *Manager) ListBaselines() map[string]Baseline
 ### 4.1 统计计算
 
 #### 平均值计算
+
 ```go
 average := sum / float64(len(records))
 ```
 
 #### 标准差计算
+
 ```go
 // 计算方差
 var variance float64
@@ -355,11 +382,11 @@ for key, bl := range baselines {
 
 ### 7.1 常见错误
 
-| 错误场景 | 原因 | 处理方式 |
-|---------|------|---------|
-| 数据库查询失败 | 数据库连接问题 | 返回错误 |
-| 无数据 | 设备无历史数据 | 返回空基线（平均值为0） |
-| 基线计算失败 | 数据类型转换失败 | 返回错误 |
+| 错误场景    | 原因       | 处理方式         |
+| ------- | -------- | ------------ |
+| 数据库查询失败 | 数据库连接问题  | 返回错误         |
+| 无数据     | 设备无历史数据  | 返回空基线（平均值为0） |
+| 基线计算失败  | 数据类型转换失败 | 返回错误         |
 
 ### 7.2 错误返回
 
@@ -432,18 +459,18 @@ func processReading(deviceName, readingName string, value float64) {
 
 ### 9.1 学习期设置
 
-| 场景 | 学习期（天） | 说明 |
-|------|-------------|------|
-| 稳定环境 | 30 | 环境稳定，数据波动小 |
-| 动态环境 | 7-14 | 环境变化快，需要更频繁更新基线 |
-| 新设备 | 1-3 | 新设备，需要快速建立初始基线 |
+| 场景   | 学习期（天） | 说明              |
+| ---- | ------ | --------------- |
+| 稳定环境 | 30     | 环境稳定，数据波动小      |
+| 动态环境 | 7-14   | 环境变化快，需要更频繁更新基线 |
+| 新设备  | 1-3    | 新设备，需要快速建立初始基线  |
 
 ### 9.2 标准差倍数设置
 
-| 场景 | 倍数 | 说明 |
-|------|------|------|
-| 严格检测 | 1.5 | 检测轻微异常 |
-| 标准检测 | 2.0 | 检测明显异常 |
+| 场景   | 倍数  | 说明      |
+| ---- | --- | ------- |
+| 严格检测 | 1.5 | 检测轻微异常  |
+| 标准检测 | 2.0 | 检测明显异常  |
 | 宽松检测 | 3.0 | 只检测严重异常 |
 
 ## 10. 注意事项
