@@ -35,15 +35,16 @@ build/
 # Environment variables
 .env
 
+# Commercial/Closed-source packages
+web/
+agent/
+
 # Word documents
 word/
 tech-book/
 销售方法/
-# Enterprise features
-cloudsync/
-web/
-agent/
 商业分析/
+*/doc/
 todo.md
 */doc/
 技术文档/
