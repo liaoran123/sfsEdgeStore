@@ -45,7 +45,7 @@ func (a *Args) ShowHelp() {
 	fmt.Println("  sfsedgestore -broker tcp://192.168.1.100:1883 -port 8082")
 }
 func PrintWelcome() {
-	fmt.Println(`
+	fmt.Print(`
 ╔═══════════════════════════════════════════════════════════════╗
 ║                    sfsEdgeStore 启动成功                       ║
 ╠═══════════════════════════════════════════════════════════════╣
