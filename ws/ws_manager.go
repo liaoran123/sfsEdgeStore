@@ -18,7 +18,7 @@ type WSManager struct {
 func NewWSManager() *WSManager {
 	return &WSManager{
 		clients:    make(map[*websocket.Conn]bool),
-		broadcast:  make(chan []byte),
+		broadcast:  make(chan []byte, 256), // 添加缓冲区，防止广播阻塞//// 256 个消息
 		register:   make(chan *websocket.Conn),
 		unregister: make(chan *websocket.Conn),
 	}

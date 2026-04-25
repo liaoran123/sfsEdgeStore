@@ -1,10 +1,168 @@
-// sfsEdgeStore 本地监控 Dashboard JS
+// sfsEdgeStore Local Monitoring Dashboard JS
 let realtimeData = [];
 let historicalData = [];
 let selectedDevice = '';
 let selectedReading = '';
-let updateInterval = 5000; // 5秒刷新一次
+let updateInterval = 5000; // 5 seconds refresh
 let ws;
+
+// One-click Config
+function oneClickConfig() {
+    fetch('/api/config/oneclick', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert('One-click config successful!');
+            // Refresh data
+            fetchData();
+        } else {
+            alert('Config failed: ' + (data.message || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Config failed:', error);
+        alert('Config failed, please check network connection');
+    });
+}
+
+// Refresh Data
+function refreshData() {
+    fetchData();
+    fetchMetrics();
+    fetchDeviceStatus();
+    fetchDeviceAlerts();
+    alert('Data refreshed!');
+}
+
+// Export Data
+function exportData() {
+    const exportType = prompt('Please select export format:\n1. CSV\n2. JSON', '1');
+    
+    if (exportType === '1') {
+        window.open('/api/export/csv', '_blank');
+    } else if (exportType === '2') {
+        window.open('/api/export/json', '_blank');
+    }
+}
+
+// Data Retention
+function openRetentionSettings() {
+    // Get current settings from server
+    fetch('/api/retention/status')
+        .then(response => response.json())
+        .then(data => {
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('retentionSettingsModal'));
+            modal.show();
+            
+            // Set values after modal is shown
+            setTimeout(() => {
+                // Adapt to backend API response format
+                const retentionStatus = data.data || data;
+                
+                // Always use server returned values, even if enabled is false
+                const retentionDaysEl = document.getElementById('retentionDays');
+                if (retentionDaysEl) {
+                    // Use server value if available, otherwise use default
+                    if (retentionStatus.retention_days > 0) {
+                        retentionDaysEl.value = retentionStatus.retention_days;
+                    } else {
+                        retentionDaysEl.value = 30;
+                    }
+                }
+                
+                // Convert cleanup interval
+                const cleanupInterval = retentionStatus.cleanup_interval || 24;
+                let intervalValue = 'daily';
+                if (cleanupInterval === 168) { // 7 days
+                    intervalValue = 'weekly';
+                } else if (cleanupInterval === 720) { // 30 days
+                    intervalValue = 'monthly';
+                }
+                
+                const cleanupIntervalEl = document.getElementById('cleanupInterval');
+                if (cleanupIntervalEl) {
+                    cleanupIntervalEl.value = intervalValue;
+                }
+            }, 100);
+        })
+        .catch(error => {
+            console.error('Failed to get data retention:', error);
+            
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('retentionSettingsModal'));
+            modal.show();
+            
+            // Set default values after modal is shown
+            setTimeout(() => {
+                // Use default values
+                const retentionDaysEl = document.getElementById('retentionDays');
+                if (retentionDaysEl) {
+                    retentionDaysEl.value = 30;
+                }
+                
+                const cleanupIntervalEl = document.getElementById('cleanupInterval');
+                if (cleanupIntervalEl) {
+                    cleanupIntervalEl.value = 'daily';
+                }
+            }, 100);
+        });
+}
+
+// Topic Subscription
+function openTopicSubscription() {
+    window.location.href = '/mqtt-subscription';
+}
+
+function saveRetentionSettings() {
+    const retentionDays = document.getElementById('retentionDays').value;
+    const cleanupInterval = document.getElementById('cleanupInterval').value;
+    
+    // Convert cleanup interval to hours
+    let cleanupIntervalHours = 24; // Default daily
+    if (cleanupInterval === 'weekly') {
+        cleanupIntervalHours = 168; // 7 days
+    } else if (cleanupInterval === 'monthly') {
+        cleanupIntervalHours = 720; // 30 days
+    }
+    
+    // Build config object
+    const configData = {
+        enable_retention_policy: true,
+        retention_days: parseInt(retentionDays),
+        cleanup_interval_hours: cleanupIntervalHours
+    };
+    
+    // Send to server
+    fetch('/api/config/update', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(configData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert('Data retention saved!');
+            
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('retentionSettingsModal'));
+            modal.hide();
+        } else {
+            alert('Save failed: ' + (data.message || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Save data retention failed:', error);
+        alert('Save failed, please check network connection');
+    });
+}
 
 document.addEventListener('DOMContentLoaded', function() {
     connectWebSocket();
@@ -19,7 +177,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setInterval(fetchDeviceAlerts, updateInterval);
 });
 
-// WebSocket 连接
+// WebSocket Connection
 function connectWebSocket() {
     ws = new WebSocket('ws://' + window.location.host + '/ws');
     
@@ -65,7 +223,7 @@ function updateRealtimeData(deviceData) {
 	const deviceName = deviceData.deviceName;
 	const records = deviceData.records;
 	
-	// 添加新数据到实时数据列表
+	// Add new data to realtime data list
 	records.forEach(record => {
 		realtimeData.unshift(record);
 		if (realtimeData.length > 21) {
@@ -73,15 +231,15 @@ function updateRealtimeData(deviceData) {
 		}
 	});
 	
-	// 更新表格
+	// Update table
 	updateTable();
-	// 更新波形图
+	// Update waveform
 	updateWaveform();
 	
-	// 更新设备计数
+	// Update data count
 	const dataCountElement = document.getElementById('dataCount');
 	if (dataCountElement) {
-		dataCountElement.textContent = realtimeData.length + ' 条记录';
+		dataCountElement.textContent = realtimeData.length + ' records';
 	}
 }
 
@@ -89,7 +247,7 @@ function updateDeviceAlerts(alertData) {
     const deviceName = alertData.deviceName;
     const alerts = alertData.alerts;
     
-    // 直接刷新告警列表，不再使用 alertList 缓存
+    // Directly refresh alert list, no longer using alertList cache
     fetchDeviceAlerts();
 }
 
@@ -97,7 +255,7 @@ function updateUnhealthyDevices(alertGroups) {
     const container = document.getElementById('unhealthyDevices');
     if (!container) return;
     
-    // 收集有告警的设备
+    // Collect devices with alerts
     const unhealthyDeviceMap = new Map();
     alertGroups.forEach(g => {
         if (g.alerts && g.alerts.length > 0) {
@@ -105,13 +263,13 @@ function updateUnhealthyDevices(alertGroups) {
                 if (!unhealthyDeviceMap.has(g.deviceName)) {
                     unhealthyDeviceMap.set(g.deviceName, []);
                 }
-                unhealthyDeviceMap.get(g.deviceName).push(alert.message || '告警');
+                unhealthyDeviceMap.get(g.deviceName).push(alert.message || 'Alert');
             });
         }
     });
     
     if (unhealthyDeviceMap.size === 0) {
-        container.innerHTML = '<div class="text-white-50 text-center">暂无问题设备</div>';
+        container.innerHTML = '<div class="text-white-50 text-center">No unhealthy devices</div>';
         return;
     }
     
@@ -148,6 +306,65 @@ function formatBytes(bytes) {
     return bytes + ' B';
 }
 
+// Get unit based on reading type
+function getUnitByReading(reading) {
+    const unitMap = {
+        'temperature': '°C',
+        'humidity': '%',
+        'pressure': 'hPa',
+        'voltage': 'V',
+        'current': 'A',
+        'power': 'W',
+        'energy': 'kWh',
+        'speed': 'km/h',
+        'flow': 'L/min',
+        'level': 'm',
+        'weight': 'kg',
+        'distance': 'm',
+        'frequency': 'Hz',
+        'resistance': 'Ω',
+        'conductivity': 'μS/cm',
+        'pH': 'pH',
+        'ORP': 'mV',
+        'dissolvedOxygen': 'mg/L',
+        'turbidity': 'NTU',
+        'co2': 'ppm',
+        'o2': 'ppm',
+        'nox': 'ppm',
+        'sox': 'ppm',
+        'pm25': 'μg/m³',
+        'pm10': 'μg/m³'
+    };
+    
+    // Convert reading to lowercase for case-insensitive matching
+    const lowerReading = reading.toLowerCase();
+    
+    // Check if reading is in the unit map
+    if (unitMap[lowerReading]) {
+        return unitMap[lowerReading];
+    }
+    
+    // Check for common prefixes or suffixes
+    if (lowerReading.includes('temp')) {
+        return '°C';
+    } else if (lowerReading.includes('humid')) {
+        return '%';
+    } else if (lowerReading.includes('press')) {
+        return 'hPa';
+    } else if (lowerReading.includes('volt')) {
+        return 'V';
+    } else if (lowerReading.includes('current')) {
+        return 'A';
+    } else if (lowerReading.includes('power')) {
+        return 'W';
+    } else if (lowerReading.includes('energy')) {
+        return 'kWh';
+    }
+    
+    // Default to empty string if no unit found
+    return '';
+}
+
 async function fetchData() {
     try {
         const res = await fetch('/api/readings?limit=21');
@@ -160,23 +377,23 @@ async function fetchData() {
 
         const dataCountElement = document.getElementById('dataCount');
         if (dataCountElement) {
-            dataCountElement.textContent = realtimeData.length + ' 条记录';
+            dataCountElement.textContent = realtimeData.length + ' records';
         }
 
         const connectionStatusElement = document.getElementById('connectionStatus');
         const connectionDotElement = document.getElementById('connectionDot');
         if (connectionStatusElement) {
-            connectionStatusElement.textContent = '已连接';
+            connectionStatusElement.textContent = 'Connected';
         }
         if (connectionDotElement) {
             connectionDotElement.className = 'status-dot online';
         }
     } catch (e) {
-        console.error('获取数据失败:', e);
+        console.error('Failed to fetch data:', e);
         const connectionStatusElement = document.getElementById('connectionStatus');
         const connectionDotElement = document.getElementById('connectionDot');
         if (connectionStatusElement) {
-            connectionStatusElement.textContent = '连接断开';
+            connectionStatusElement.textContent = 'Disconnected';
         }
         if (connectionDotElement) {
             connectionDotElement.className = 'status-dot offline';
@@ -218,12 +435,12 @@ async function fetchMetrics() {
             updateMetricBar('memoryBar', 'memoryValue', memUsage.toFixed(1), ' MB', 'memory');
         }
     } catch (e) {
-        console.error('获取指标失败:', e);
+        console.error('Failed to fetch metrics:', e);
     }
 
     const lastUpdateElement = document.getElementById('lastUpdate');
     if (lastUpdateElement) {
-        lastUpdateElement.textContent = '更新: ' + new Date().toLocaleTimeString();
+        lastUpdateElement.textContent = 'Updated: ' + new Date().toLocaleTimeString();
     }
 }
 
@@ -270,13 +487,13 @@ async function fetchDeviceStatus() {
         if (statusElement) {
             const healthyRatio = totalDevices > 0 ? (onlineDevices / totalDevices) : 0;
             if (healthyRatio >= 0.8) {
-                statusElement.textContent = '健康';
+                statusElement.textContent = 'Healthy';
                 statusElement.className = 'text-primary';
             } else if (healthyRatio >= 0.5) {
-                statusElement.textContent = '警告';
+                statusElement.textContent = 'Warning';
                 statusElement.className = 'text-warning';
             } else {
-                statusElement.textContent = '异常';
+                statusElement.textContent = 'Critical';
                 statusElement.className = 'text-danger';
             }
         }
@@ -286,7 +503,7 @@ async function fetchDeviceStatus() {
         if (onlineCountElement) onlineCountElement.textContent = onlineDevices;
         if (totalCountElement) totalCountElement.textContent = totalDevices;
     } catch (e) {
-        console.error('获取设备状态失败:', e);
+        console.error('Failed to fetch device status:', e);
     }
 }
 
@@ -297,15 +514,15 @@ async function fetchLicenseInfo() {
 
         const versionElement = document.getElementById('licenseVersion');
         if (versionElement) {
-            versionElement.textContent = data.version || '未知';
+            versionElement.textContent = data.version || 'Unknown';
         }
 
         const devicesElement = document.getElementById('licenseDevices');
         if (devicesElement) {
-            devicesElement.textContent = (data.deviceLimit || 0) + ' 台';
+            devicesElement.textContent = (data.deviceLimit || 0) + ' devices';
         }
     } catch (e) {
-        console.error('获取许可证信息失败:', e);
+        console.error('Failed to fetch license info:', e);
     }
 }
 
@@ -318,14 +535,14 @@ async function fetchDeviceAlerts() {
         const alertCountElement = document.getElementById('deviceAlertCount');
         if (!alertsContainer) return;
 
-        // 直接使用 API 返回的 groups，不使用 alertList 缓存
-        // 更新告警计数
+        // Use API returned groups directly, no alertList cache
+        // Update alert count
         if (alertCountElement) {
             alertCountElement.textContent = groups.length;
         }
 
         if (groups.length === 0) {
-            alertsContainer.innerHTML = '<div class="text-center text-white-50 p-3">暂无告警</div>';
+            alertsContainer.innerHTML = '<div class="text-center text-white-50 p-3">No alerts</div>';
             return;
         }
 
@@ -336,7 +553,7 @@ async function fetchDeviceAlerts() {
             const colorClass = g.Severity === 'critical' ? 'text-danger' : (g.Severity === 'warning' ? 'text-warning' : 'text-info');
             const bgClass = g.Severity === 'critical' ? 'bg-danger/10 border-danger/30' : (g.Severity === 'warning' ? 'bg-warning/10 border-warning/30' : 'bg-info/10 border-info/30');
 
-            let timeStr = '未知';
+            let timeStr = 'Unknown';
             if (g.LastTime) {
                 try {
                     const d = new Date(g.LastTime);
@@ -350,26 +567,26 @@ async function fetchDeviceAlerts() {
             if (g.Devices && g.Devices.length > 0) {
                 const devs = g.Devices.slice(0, 3).join(', ');
                 const more = g.DeviceCount > 3 ? '...' : '';
-                infoLine = '<div class="small text-white-50 mt-1">' + devs + more + ' (' + g.DeviceCount + '台, ' + g.Count + '次)</div>';
+                infoLine = '<div class="small text-white-50 mt-1">' + devs + more + ' (' + g.DeviceCount + ' devices, ' + g.Count + ' times)</div>';
             } else if (g.Count > 1) {
-                infoLine = '<div class="small text-white-50 mt-1">共' + g.Count + '次</div>';
+                infoLine = '<div class="small text-white-50 mt-1">Total ' + g.Count + ' times</div>';
             }
 
             html += '<div class="alert-item p-3 rounded border ' + bgClass + '">' +
                 '<div class="d-flex justify-content-between items-center">' +
-                '<span class="' + colorClass + ' fw-bold">' + icon + ' ' + (g.Message || '未知告警') + '</span>' +
+                '<span class="' + colorClass + ' fw-bold">' + icon + ' ' + (g.Message || 'Unknown Alert') + '</span>' +
                 '<span class="text-secondary small">' + timeStr + '</span></div>' +
                 infoLine + '</div>';
         }
         alertsContainer.innerHTML = html;
-        // 更新问题设备列表
+        // Update unhealthy devices list
         updateUnhealthyDevices(groups);
     } catch (e) {
-        console.error('获取告警失败:', e);
+        console.error('Failed to fetch alerts:', e);
         const alertsContainer = document.getElementById('deviceAlerts');
         const alertCountElement = document.getElementById('deviceAlertCount');
         if (alertsContainer) {
-            alertsContainer.innerHTML = '<div class="text-center text-danger p-3">获取告警失败</div>';
+            alertsContainer.innerHTML = '<div class="text-center text-danger p-3">Failed to fetch alerts</div>';
         }
         if (alertCountElement) {
             alertCountElement.textContent = '0';
@@ -377,13 +594,13 @@ async function fetchDeviceAlerts() {
     }
 }
 
-// 清除告警
+// Clear Alerts
 function clearDeviceAlerts() {
     alertList = [];
     const alertsContainer = document.getElementById('deviceAlerts');
     const alertCountElement = document.getElementById('deviceAlertCount');
     if (alertsContainer) {
-        alertsContainer.innerHTML = '<div class="text-center text-white-50 p-3">暂无告警</div>';
+        alertsContainer.innerHTML = '<div class="text-center text-white-50 p-3">No alerts</div>';
     }
     if (alertCountElement) {
         alertCountElement.textContent = '0';
@@ -394,7 +611,7 @@ function updateUnhealthyDevices(groups) {
     const container = document.getElementById('unhealthyDevices');
     if (!container) return;
 
-    // 收集有告警的设备
+    // Collect devices with alerts
     const unhealthyDeviceMap = new Map();
     groups.forEach(g => {
         if (g.Devices && g.Devices.length > 0) {
@@ -402,13 +619,13 @@ function updateUnhealthyDevices(groups) {
                 if (!unhealthyDeviceMap.has(d)) {
                     unhealthyDeviceMap.set(d, []);
                 }
-                unhealthyDeviceMap.get(d).push(g.Message || '告警');
+                unhealthyDeviceMap.get(d).push(g.Message || 'Alert');
             });
         }
     });
 
     if (unhealthyDeviceMap.size === 0) {
-        container.innerHTML = '<div class="text-white-50 text-center">暂无问题设备</div>';
+        container.innerHTML = '<div class="text-white-50 text-center">No unhealthy devices</div>';
         return;
     }
 
@@ -437,7 +654,7 @@ async function updateDeviceList() {
 
         const deviceCountElement = document.getElementById('deviceCount');
         if (deviceCountElement) {
-            deviceCountElement.textContent = devices.length + ' 台设备';
+            deviceCountElement.textContent = devices.length + ' devices';
         }
 
         const tbody = document.getElementById('deviceTableBody');
@@ -453,15 +670,15 @@ async function updateDeviceList() {
 
         filtered.forEach(device => {
             const tr = document.createElement('tr');
-            let lastActiveStr = '未知';
+            let lastActiveStr = 'Unknown';
             try {
                 const lastActiveDate = new Date(device.lastActive);
                 if (!isNaN(lastActiveDate.getTime())) {
                     lastActiveStr = lastActiveDate.toLocaleTimeString();
                 }
             } catch (e) {}
-            const status = device.isOnline ? '在线' : '离线';
-            const statusClass = status === '在线' ? 'text-primary' : 'text-muted';
+            const status = device.isOnline ? 'Online' : 'Offline';
+            const statusClass = status === 'Online' ? 'text-primary' : 'text-muted';
 
             tr.innerHTML = `
                 <td class="device-name">${device.deviceName}</td>
@@ -472,7 +689,7 @@ async function updateDeviceList() {
             tbody.appendChild(tr);
         });
     } catch (e) {
-        console.error('获取设备列表失败:', e);
+        console.error('Failed to fetch device list:', e);
     }
 }
 
@@ -487,7 +704,7 @@ function updateDeviceSelect() {
     const devices = [...new Set(realtimeData.map(d => d.deviceName))];
     const currentValue = select.value;
 
-    select.innerHTML = '<option value="">选择设备</option>';
+    select.innerHTML = '<option value="">Select Device</option>';
     devices.forEach(device => {
         const option = document.createElement('option');
         option.value = device;
@@ -524,11 +741,13 @@ function updateTable() {
     filtered.forEach(item => {
         const tr = document.createElement('tr');
         const time = new Date(item.timestamp / 1000000).toLocaleTimeString();
+        const unit = getUnitByReading(item.reading);
+        const valueWithUnit = unit ? `${item.value} ${unit}` : item.value;
         tr.innerHTML = `
             <td>${time}</td>
             <td class="device-name">${item.deviceName}</td>
             <td>${item.reading}</td>
-            <td>${item.value}</td>
+            <td>${valueWithUnit}</td>
             <td>${item.valueType || 'Unknown'}</td>
         `;
         tbody.appendChild(tr);
@@ -576,4 +795,48 @@ function updateWaveform() {
     });
 
     svg.innerHTML = svgContent;
+}
+
+// One-click Config
+function oneClickConfig() {
+    fetch('/api/config/oneclick', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert('One-click config successful!');
+            // Refresh data
+            fetchData();
+        } else {
+            alert('Config failed: ' + (data.message || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Config failed:', error);
+        alert('Config failed, please check network connection');
+    });
+}
+
+// Refresh Data
+function refreshData() {
+    fetchData();
+    fetchMetrics();
+    fetchDeviceStatus();
+    fetchDeviceAlerts();
+    alert('Data refreshed!');
+}
+
+// Export Data
+function exportData() {
+    const exportType = prompt('Please select export format:\n1. CSV\n2. JSON', '1');
+    
+    if (exportType === '1') {
+        window.open('/api/export/csv', '_blank');
+    } else if (exportType === '2') {
+        window.open('/api/export/json', '_blank');
+    }
 }

@@ -18,10 +18,13 @@ import (
 	"sfsEdgeStore/common"
 	"sfsEdgeStore/config"
 	"sfsEdgeStore/configwizard"
+	"sfsEdgeStore/core/baseline"
 	"sfsEdgeStore/core/database"
 	"sfsEdgeStore/core/edgex"
 	"sfsEdgeStore/core/mqtt"
+	"sfsEdgeStore/core/template"
 	"sfsEdgeStore/monitor"
+	"sfsEdgeStore/pathutil"
 	"sfsEdgeStore/resource"
 	"sfsEdgeStore/retention"
 	"sfsEdgeStore/ws"
@@ -42,12 +45,35 @@ type Server struct {
 	ResourceMonitor *resource.ResourceMonitor
 	MQTTClient      mqtt.Client
 	wsManager       *ws.WSManager
+	TemplateManager *template.Manager
+	BaselineManager *baseline.Manager
 }
 
 // NewServer 创建一个新的服务器实例
 func NewServer(table *engine.Table, cfg *config.Config, monitor *monitor.Monitor, retentionMgr *retention.RetentionManager, alertNotifier *alert.Notifier, resourceMonitor *resource.ResourceMonitor) *Server {
 	wsManager := ws.NewWSManager()
 	go wsManager.Run()
+
+	// 初始化模板管理器
+	templateManager := template.NewManager()
+	if err := templateManager.LoadTemplates(); err != nil {
+		log.Printf("Failed to load templates: %v", err)
+	}
+
+	// 初始化基线管理器
+	learningPeriod := 3 // 默认学习期3天
+	if cfg.Baseline != nil {
+		if lp, ok := cfg.Baseline["learning_period"].(int); ok {
+			learningPeriod = lp
+		}
+	}
+	enabled := true
+	if cfg.Baseline != nil {
+		if e, ok := cfg.Baseline["enabled"].(bool); ok {
+			enabled = e
+		}
+	}
+	baselineManager := baseline.NewManager(learningPeriod, enabled)
 
 	return &Server{
 		Table:           table,
@@ -57,6 +83,8 @@ func NewServer(table *engine.Table, cfg *config.Config, monitor *monitor.Monitor
 		AlertNotifier:   alertNotifier,
 		ResourceMonitor: resourceMonitor,
 		wsManager:       wsManager,
+		TemplateManager: templateManager,
+		BaselineManager: baselineManager,
 	}
 }
 
@@ -195,6 +223,15 @@ func (s *Server) registerRoutes() {
 
 	// 设备状态API - 不需要认证，用于Web界面展示
 	http.HandleFunc("/api/device-status", s.handleDeviceStatus)
+
+	// 模板相关API - 不需要认证，用于Web界面展示
+	http.HandleFunc("/api/templates", s.handleTemplates)
+	http.HandleFunc("/api/templates/apply", s.handleApplyTemplate)
+
+	// 基线相关API - 不需要认证，用于Web界面展示
+	http.HandleFunc("/api/baselines", s.handleBaselines)
+	http.HandleFunc("/api/baselines/calculate", s.handleCalculateBaseline)
+
 	// 告警信息API - 不需要认证，用于Web界面展示
 	http.HandleFunc("/api/alerts", s.handleAlerts)
 	// 分组告警API
@@ -219,6 +256,11 @@ func (s *Server) handleQueryReadings(w http.ResponseWriter, r *http.Request) {
 	startTime := r.URL.Query().Get("startTime")
 	endTime := r.URL.Query().Get("endTime")
 	limitStr := r.URL.Query().Get("limit")
+
+	// 格式化设备名称，确保与数据库中存储的格式一致
+	if deviceName != "" {
+		deviceName = common.FormatDeviceName(deviceName)
+	}
 
 	// 解析limit参数
 	var limit int
@@ -390,6 +432,12 @@ func (s *Server) handleTestEdgeX(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Failed to process message: %v", err)})
+		return
+	}
+	if event == nil {
+		// 消息类型不是 event，无需处理
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"status": "ignored_non_event_message"})
 		return
 	}
 	handleEdgeXEvent(s, w, event)
@@ -686,31 +734,46 @@ func (s *Server) handleExportCSV(w http.ResponseWriter, r *http.Request) {
 		s.Monitor.IncrementHTTPRequests()
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
 		return
 	}
 
-	// 获取文件路径参数
-	filePath := r.URL.Query().Get("path")
-	if filePath == "" {
-		filePath = "./export.csv"
+	// 生成临时文件
+	tempFile, err := os.CreateTemp("", "export-*.csv")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to create temp file"})
+		return
 	}
+	tempPath := tempFile.Name()
+	tempFile.Close()
+	defer os.Remove(tempPath)
 
 	// 执行导出
-	if err := database.ExportTableToCSV(database.Table, filePath); err != nil {
+	if err := database.ExportTableToCSV(database.Table, tempPath); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]string{
-		"status": "success",
-		"file":   filePath,
-	})
+	// 设置下载头
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment; filename=export.csv")
+	w.Header().Set("Content-Transfer-Encoding", "binary")
+
+	// 读取并发送文件
+	file, err := os.Open(tempPath)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to open export file"})
+		return
+	}
+	defer file.Close()
+
+	// 发送文件内容
+	io.Copy(w, file)
 }
 
 // handleExportJSON 处理导出表数据为JSON格式请求
@@ -720,31 +783,46 @@ func (s *Server) handleExportJSON(w http.ResponseWriter, r *http.Request) {
 		s.Monitor.IncrementHTTPRequests()
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
 		return
 	}
 
-	// 获取文件路径参数
-	filePath := r.URL.Query().Get("path")
-	if filePath == "" {
-		filePath = "./export.json"
+	// 生成临时文件
+	tempFile, err := os.CreateTemp("", "export-*.json")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to create temp file"})
+		return
 	}
+	tempPath := tempFile.Name()
+	tempFile.Close()
+	defer os.Remove(tempPath)
 
 	// 执行导出
-	if err := database.ExportTableToJSON(database.Table, filePath); err != nil {
+	if err := database.ExportTableToJSON(database.Table, tempPath); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]string{
-		"status": "success",
-		"file":   filePath,
-	})
+	// 设置下载头
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", "attachment; filename=export.json")
+	w.Header().Set("Content-Transfer-Encoding", "binary")
+
+	// 读取并发送文件
+	file, err := os.Open(tempPath)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to open export file"})
+		return
+	}
+	defer file.Close()
+
+	// 发送文件内容
+	io.Copy(w, file)
 }
 
 // handleExportSQL 处理导出表数据为SQL格式请求
@@ -1365,15 +1443,13 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 
 // handleWebIndex 处理Web界面首页
 func (s *Server) handleWebIndex(w http.ResponseWriter, r *http.Request) {
-	// 获取可执行文件所在目录
-	execPath, err := os.Executable()
+	webDir, err := pathutil.Join("web")
 	if err != nil {
-		http.Error(w, "Failed to get executable path", http.StatusInternalServerError)
-		return
+		webDir = "web"
 	}
-	webDir := filepath.Join(filepath.Dir(execPath), "web")
+
 	if _, err := os.Stat(webDir); os.IsNotExist(err) {
-		webDir = "./web"
+		webDir = "web"
 	}
 
 	// 根据路径返回不同的页面
@@ -1402,31 +1478,12 @@ func (s *Server) handleWebIndex(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleStaticFiles(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Static file request: %s", r.URL.Path)
 
-	// 尝试多个可能的web目录位置
-	webDirs := []string{
-		"./web",
-		"web",
+	webDir, err := pathutil.Join("web")
+	if err != nil {
+		webDir = "web"
 	}
 
-	var webDir string
-	for _, dir := range webDirs {
-		if _, err := os.Stat(dir); err == nil {
-			webDir = dir
-			log.Printf("Found web directory: %s", webDir)
-			break
-		}
-	}
-
-	if webDir == "" {
-		// 最后尝试基于可执行文件路径
-		execPath, err := os.Executable()
-		if err == nil {
-			webDir = filepath.Join(filepath.Dir(execPath), "web")
-			log.Printf("Trying web directory from executable path: %s", webDir)
-		}
-	}
-
-	if webDir == "" {
+	if _, err := os.Stat(webDir); err != nil {
 		log.Println("Web directory not found")
 		http.Error(w, "Web directory not found", http.StatusInternalServerError)
 		return
@@ -1439,6 +1496,37 @@ func (s *Server) handleStaticFiles(w http.ResponseWriter, r *http.Request) {
 		log.Printf("File not found: %s", filePath)
 		http.Error(w, "File not found", http.StatusNotFound)
 		return
+	}
+
+	// 根据文件扩展名设置正确的 MIME 类型
+	ext := filepath.Ext(filePath)
+	switch ext {
+	case ".css":
+		w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	case ".js":
+		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	case ".html":
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	case ".json":
+		w.Header().Set("Content-Type", "application/json")
+	case ".png":
+		w.Header().Set("Content-Type", "image/png")
+	case ".jpg", ".jpeg":
+		w.Header().Set("Content-Type", "image/jpeg")
+	case ".gif":
+		w.Header().Set("Content-Type", "image/gif")
+	case ".svg":
+		w.Header().Set("Content-Type", "image/svg+xml")
+	case ".ico":
+		w.Header().Set("Content-Type", "image/x-icon")
+	case ".woff":
+		w.Header().Set("Content-Type", "font/woff")
+	case ".woff2":
+		w.Header().Set("Content-Type", "font/woff2")
+	case ".ttf":
+		w.Header().Set("Content-Type", "font/ttf")
+	case ".eot":
+		w.Header().Set("Content-Type", "application/vnd.ms-fontobject")
 	}
 
 	log.Printf("Serving file: %s", filePath)
@@ -1864,7 +1952,132 @@ func updateDeviceStatus(monitor *monitor.Monitor, deviceName, resourceName strin
 	}
 }
 
-// handleWebSocket 处理 WebSocket 连接
+// handleTemplates 处理获取模板请求
+func (s *Server) handleTemplates(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor != nil {
+		s.Monitor.IncrementHTTPRequests()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	// 获取所有行业模板
+	industries := s.TemplateManager.ListIndustries()
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":     "success",
+		"industries": industries,
+	})
+}
+
+// handleApplyTemplate 处理应用模板请求
+func (s *Server) handleApplyTemplate(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor != nil {
+		s.Monitor.IncrementHTTPRequests()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	// 解析请求
+	var req struct {
+		Industry string `json:"industry"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	// 应用模板
+	if err := s.TemplateManager.ApplyTemplate(req.Industry, s.Config); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":   "success",
+		"message":  "Template applied successfully",
+		"industry": req.Industry,
+	})
+}
+
+// handleBaselines 处理获取基线请求
+func (s *Server) handleBaselines(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor != nil {
+		s.Monitor.IncrementHTTPRequests()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	// 获取所有基线
+	baselines := s.BaselineManager.ListBaselines()
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":    "success",
+		"baselines": baselines,
+	})
+}
+
+// handleCalculateBaseline 处理计算基线请求
+func (s *Server) handleCalculateBaseline(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor != nil {
+		s.Monitor.IncrementHTTPRequests()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	// 解析请求
+	var req struct {
+		DeviceName  string `json:"deviceName"`
+		ReadingName string `json:"readingName"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	// 计算基线
+	baseline, err := s.BaselineManager.CalculateBaseline(req.DeviceName, req.ReadingName)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":   "success",
+		"baseline": baseline,
+	})
+}
+
+// handleWebSocket 处理WebSocket连接
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {

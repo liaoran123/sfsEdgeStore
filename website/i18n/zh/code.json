@@ -1,0 +1,17 @@
+{
+  "theme": {
+    "common.editThisPage": "编辑此页面",
+    "theme.LastUpdated.lastUpdatedAtBy": "最后更新于 {date}，由 {author}",
+    "theme.navbar.next": "下一页",
+    "theme.navbar.previous": "上一页",
+    "theme.ErrorPageContent.title": "页面已崩溃",
+    "theme.NotFound.title": "页面未找到",
+    "theme.AnnouncementBar.closeButtonAriaLabel": "关闭",
+    "theme.BackToTopButton.buttonAriaLabel": "回到顶部",
+    "theme.admonition.note": "备注",
+    "theme.admonition.tip": "提示",
+    "theme.admonition.danger": "警告",
+    "theme.admonition.info": "信息",
+    "theme.admonition.caution": "注意"
+  }
+}

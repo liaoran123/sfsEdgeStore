@@ -35,7 +35,15 @@ type Client struct {
 	lastBatchTime     time.Time
 	registeredDevices map[string]bool // 已注册设备集合
 	broadcaster       broadcast.Broadcaster
+
+	// Worker Pool 用于限制并发处理消息的 Goroutine 数量，防止内存泄漏
+	messageQueue chan mqtt.Message
 }
+
+const (
+	workerQueueSize = 2000 // 消息队列缓冲区大小
+	workerCount     = 4    // 工作协程数量
+)
 
 // 标准EdgeX主题
 var standardTopics = []string{
@@ -84,6 +92,12 @@ func NewClient(cfg *config.Config, dataQueue *queue.Queue, monitor *monitor.Moni
 		lastBatchTime:     time.Now(),
 		registeredDevices: make(map[string]bool),
 		broadcaster:       broadcaster,
+		messageQueue:      make(chan mqtt.Message, workerQueueSize),
+	}
+
+	// 启动 Worker Pool 处理消息队列
+	for i := 0; i < workerCount; i++ {
+		go client.messageWorker(i)
 	}
 
 	// 添加 TLS 支持

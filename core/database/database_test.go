@@ -220,3 +220,291 @@ func TestQueryRecordsOrder(t *testing.T) {
 
 	t.Log("Query records order test passed successfully")
 }
+
+func TestExpiredDataDeletion(t *testing.T) {
+	testDBPath := "./test_expired_deletion_" + time.Now().Format("20060102150405")
+	// 先清理目录，确保没有残留数据
+	os.RemoveAll(testDBPath)
+	defer func() {
+		os.RemoveAll(testDBPath)
+	}()
+
+	err := Init(testDBPath, false, "", "")
+	if err != nil {
+		t.Fatalf("Failed to initialize database: %v", err)
+	}
+
+	formattedDeviceName := common.FormatDeviceName("TestDevice")
+
+	// 插入测试数据，包括过期和未过期的记录
+	var testRecords []*map[string]any
+
+	// 过期记录（10分钟前）
+	expiredTimestamp := time.Now().Add(-10 * time.Minute).UnixNano()
+	expiredData := map[string]any{
+		"id":         "expired_id",
+		"deviceName": formattedDeviceName,
+		"reading":    "temperature",
+		"value":      25.5,
+		"valueType":  "Float32",
+		"baseType":   "Float",
+		"timestamp":  expiredTimestamp,
+		"metadata":   "{\"test\": \"expired\"}",
+	}
+	testRecords = append(testRecords, &expiredData)
+
+	// 未过期记录（当前时间）
+	currentTimestamp := time.Now().UnixNano()
+	currentData := map[string]any{
+		"id":         "current_id",
+		"deviceName": formattedDeviceName,
+		"reading":    "temperature",
+		"value":      26.5,
+		"valueType":  "Float32",
+		"baseType":   "Float",
+		"timestamp":  currentTimestamp,
+		"metadata":   "{\"test\": \"current\"}",
+	}
+	testRecords = append(testRecords, &currentData)
+
+	// 插入数据
+	for _, record := range testRecords {
+		_, err := Table.Insert(record)
+		if err != nil {
+			t.Fatalf("Failed to insert test data: %v", err)
+		}
+	}
+
+	// 验证初始数据量
+	initialRecords, err := QueryRecords(Table, "", "", "", false)
+	//initialRecords, err := QueryRecords(Table, "TestDevice", "", "", false)
+	if err != nil {
+		t.Fatalf("Failed to query initial records: %v", err)
+	}
+	defer initialRecords.Release()
+
+	if len(initialRecords) != 2 {
+		t.Fatalf("Expected 2 initial records, got %d", len(initialRecords))
+	}
+
+	// 模拟cleanupBatch函数的逻辑，删除过期数据
+	cutoffTimestamp := time.Now().Add(-5 * time.Minute).UnixNano()
+	startRange := make(map[string]any)
+	endRange := make(map[string]any)
+	startRange["deviceName"] = formattedDeviceName
+	startRange["timestamp"] = nil
+	endRange["deviceName"] = formattedDeviceName
+	endRange["timestamp"] = cutoffTimestamp
+
+	iter, err := Table.SearchRange(nil, &startRange, &endRange)
+	if err != nil {
+		t.Fatalf("Failed to search range: %v", err)
+	}
+	defer iter.Release()
+
+	records := iter.GetRecords(true, 100)
+	defer records.Release()
+
+	// 验证找到的过期记录数量
+	if len(records) != 1 {
+		t.Fatalf("Expected 1 expired record, got %d", len(records))
+	}
+
+	// 删除过期记录
+	err = iter.Delete()
+	if err != nil {
+		t.Fatalf("Failed to delete expired records: %v", err)
+	}
+
+	// 验证删除后的数据量
+	remainingRecords, err := QueryRecords(Table, "TestDevice", "", "", false)
+	if err != nil {
+		t.Fatalf("Failed to query remaining records: %v", err)
+	}
+	defer remainingRecords.Release()
+
+	if len(remainingRecords) != 1 {
+		t.Fatalf("Expected 1 remaining record, got %d", len(remainingRecords))
+	}
+
+	// 验证剩余的是未过期记录
+	remainingRecord := remainingRecords[0]
+	if remainingRecord["id"] != "current_id" {
+		t.Fatalf("Expected remaining record to be current_id, got %v", remainingRecord["id"])
+	}
+
+	t.Log("Expired data deletion test passed successfully")
+}
+
+func TestCleanupBatch(t *testing.T) {
+	testDBPath := "./test_cleanup_batch_" + time.Now().Format("20060102150405")
+	// 先清理目录，确保没有残留数据
+	os.RemoveAll(testDBPath)
+	defer func() {
+		os.RemoveAll(testDBPath)
+	}()
+
+	err := Init(testDBPath, false, "", "")
+	if err != nil {
+		t.Fatalf("Failed to initialize database: %v", err)
+	}
+
+	formattedDeviceName := common.FormatDeviceName("TestDevice")
+
+	// 插入测试数据，包括多条过期记录
+	var testRecords []*map[string]any
+
+	// 过期记录1（10分钟前）
+	expiredTimestamp1 := time.Now().Add(-10 * time.Minute).UnixNano()
+	expiredData1 := map[string]any{
+		"id":         "expired_id_1",
+		"deviceName": formattedDeviceName,
+		"reading":    "temperature",
+		"value":      25.5,
+		"valueType":  "Float32",
+		"baseType":   "Float",
+		"timestamp":  expiredTimestamp1,
+		"metadata":   "{\"test\": \"expired1\"}",
+	}
+	testRecords = append(testRecords, &expiredData1)
+
+	// 过期记录2（8分钟前）
+	expiredTimestamp2 := time.Now().Add(-8 * time.Minute).UnixNano()
+	expiredData2 := map[string]any{
+		"id":         "expired_id_2",
+		"deviceName": formattedDeviceName,
+		"reading":    "temperature",
+		"value":      26.0,
+		"valueType":  "Float32",
+		"baseType":   "Float",
+		"timestamp":  expiredTimestamp2,
+		"metadata":   "{\"test\": \"expired2\"}",
+	}
+	testRecords = append(testRecords, &expiredData2)
+
+	// 未过期记录（当前时间）
+	currentTimestamp := time.Now().UnixNano()
+	currentData := map[string]any{
+		"id":         "current_id",
+		"deviceName": formattedDeviceName,
+		"reading":    "temperature",
+		"value":      27.0,
+		"valueType":  "Float32",
+		"baseType":   "Float",
+		"timestamp":  currentTimestamp,
+		"metadata":   "{\"test\": \"current\"}",
+	}
+	testRecords = append(testRecords, &currentData)
+
+	// 插入数据
+	for _, record := range testRecords {
+		_, err := Table.Insert(record)
+		if err != nil {
+			t.Fatalf("Failed to insert test data: %v", err)
+		}
+	}
+
+	// 验证初始数据量
+	startRange := make(map[string]any)
+	endRange := make(map[string]any)
+	startRange["deviceName"] = formattedDeviceName
+	startRange["timestamp"] = nil
+	endRange["deviceName"] = formattedDeviceName
+	endRange["timestamp"] = time.Now().Add(1 * time.Minute).UnixNano() // 确保包含所有测试数据
+
+	iter, err := Table.SearchRange(nil, &startRange, &endRange)
+	if err != nil {
+		t.Fatalf("Failed to search range: %v", err)
+	}
+	defer iter.Release()
+
+	initialRecords := iter.GetRecords(true, 100)
+	defer initialRecords.Release()
+
+	if len(initialRecords) != 3 {
+		t.Fatalf("Expected 3 initial records, got %d", len(initialRecords))
+	}
+
+	// 模拟cleanupBatch函数的逻辑，删除过期数据
+	cutoffTimestamp := time.Now().Add(-5 * time.Minute).UnixNano()
+	batchSize := 2
+
+	// 第一次清理批次
+	startRange = make(map[string]any)
+	endRange = make(map[string]any)
+	startRange["deviceName"] = formattedDeviceName
+	startRange["timestamp"] = nil
+	endRange["deviceName"] = formattedDeviceName
+	endRange["timestamp"] = cutoffTimestamp
+
+	iter, err = Table.SearchRange(nil, &startRange, &endRange)
+	if err != nil {
+		t.Fatalf("Failed to search range: %v", err)
+	}
+	defer iter.Release()
+
+	records := iter.GetRecords(true, batchSize)
+	defer records.Release()
+
+	// 验证找到的过期记录数量
+	if len(records) != 2 {
+		t.Fatalf("Expected 2 expired records, got %d", len(records))
+	}
+
+	// 删除过期记录
+	err = iter.Delete()
+	if err != nil {
+		t.Fatalf("Failed to delete expired records: %v", err)
+	}
+
+	// 验证删除后的数据量
+	remainingStartRange := make(map[string]any)
+	remainingEndRange := make(map[string]any)
+	remainingStartRange["deviceName"] = formattedDeviceName
+	remainingStartRange["timestamp"] = nil
+	remainingEndRange["deviceName"] = formattedDeviceName
+	remainingEndRange["timestamp"] = time.Now().Add(1 * time.Minute).UnixNano()
+
+	remainingIter, err := Table.SearchRange(nil, &remainingStartRange, &remainingEndRange)
+	if err != nil {
+		t.Fatalf("Failed to search range: %v", err)
+	}
+	defer remainingIter.Release()
+
+	remainingRecords := remainingIter.GetRecords(true, 100)
+	defer remainingRecords.Release()
+
+	if len(remainingRecords) != 1 {
+		t.Fatalf("Expected 1 remaining record, got %d", len(remainingRecords))
+	}
+
+	// 验证剩余的是未过期记录
+	remainingRecord := remainingRecords[0]
+	if remainingRecord["id"] != "current_id" {
+		t.Fatalf("Expected remaining record to be current_id, got %v", remainingRecord["id"])
+	}
+
+	// 第二次清理批次（应该没有更多过期记录）
+	startRange = make(map[string]any)
+	endRange = make(map[string]any)
+	startRange["deviceName"] = formattedDeviceName
+	startRange["timestamp"] = nil
+	endRange["deviceName"] = formattedDeviceName
+	endRange["timestamp"] = cutoffTimestamp
+
+	iter, err = Table.SearchRange(nil, &startRange, &endRange)
+	if err != nil {
+		t.Fatalf("Failed to search range: %v", err)
+	}
+	defer iter.Release()
+
+	records = iter.GetRecords(true, batchSize)
+	defer records.Release()
+
+	// 验证没有更多过期记录
+	if len(records) != 0 {
+		t.Fatalf("Expected 0 expired records, got %d", len(records))
+	}
+
+	t.Log("Cleanup batch test passed successfully")
+}

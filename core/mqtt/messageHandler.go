@@ -7,7 +7,6 @@ import (
 	"sfsEdgeStore/common"
 	"sfsEdgeStore/core/database"
 	"sfsEdgeStore/core/edgex"
-	"strings"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -24,10 +23,23 @@ func (c *Client) messageHandler() mqtt.MessageHandler {
 		// 增加MQTT消息接收计数
 		c.recordMessageReceived(len(msg.Payload()))
 
-		log.Printf("Received message on topic: %s", msg.Topic())
+		//// 将消息发送到 Worker 队列，由固定数量的 Worker 处理
+		select {
+		case c.messageQueue <- msg:
+			// 消息成功入队
+		default:
+			// 队列已满，丢弃消息或记录警告
+			if c.monitor != nil {
+				c.monitor.RecordError("queue_full", "Message queue is full, dropping message")
+			}
+		}
+	}
+}
 
-		// 使用goroutine异步处理消息，避免阻塞MQTT消息接收
-		go c.processMessageAsync(msg)
+// messageWorker 工作协程，从消息队列中接收并处理消息
+func (c *Client) messageWorker(workerID int) {
+	for msg := range c.messageQueue {
+		c.processMessageAsync(msg)
 	}
 }
 
@@ -134,50 +146,22 @@ func (c *Client) updateDeviceStatus(deviceName, resourceName string, value inter
 func (c *Client) shouldStoreData(deviceName, resourceName string, value interface{}) bool {
 	if c.filterManager != nil {
 		if !c.filterManager.ShouldStore(deviceName, resourceName, value) {
-			log.Printf("Filtered out data from %s: %s", deviceName, resourceName)
 			return false
 		}
 	}
 	return true
 }
 
-// handleStorageError 处理存储错误
+// handleStorageError 处理数据存储错误
 func (c *Client) handleStorageError(err error, records []*map[string]any) {
-	log.Printf("Failed to batch store data after retries: %v", err)
-
-	errorMsg := err.Error()
-	var errorType string
-
-	// 边缘设备常见故障类型判断
-	switch {
-	case strings.Contains(errorMsg, "no space left") ||
-		strings.Contains(errorMsg, "disk full") ||
-		strings.Contains(errorMsg, "file system") ||
-		strings.Contains(errorMsg, "I/O error"):
-		// 磁盘空间不足或文件系统错误
-		errorType = "storage_error"
-		log.Printf("Fatal storage error detected: %v", err)
-	case strings.Contains(errorMsg, "lock") ||
-		strings.Contains(errorMsg, "busy"):
-		// 锁竞争或资源忙
-		errorType = "resource_contention"
-		log.Printf("Resource contention error detected: %v", err)
-	default:
-		// 其他错误
-		errorType = "database_error"
-		log.Printf("Other database error: %v", err)
-	}
-
-	// 触发监控告警
+	// 记录错误到监控系统
 	if c.monitor != nil {
-		c.monitor.RecordError(errorType, errorMsg)
+		c.monitor.RecordError("storage_error", err.Error())
 	}
 
-	// 将数据加入队列，以便后续处理
-	if err := c.dataQueue.Enqueue(records); err != nil {
-		log.Printf("Failed to enqueue data: %v", err)
-	} else {
-		log.Printf("Enqueued %d readings for later processing", len(records))
+	// 入队重试
+	if c.dataQueue != nil {
+		c.dataQueue.Enqueue(records)
 	}
 
 	// 归还map对象到池中
@@ -224,8 +208,6 @@ func (c *Client) storeData(records []*map[string]any, deviceName string) {
 		return
 	}
 
-	log.Printf("Batch stored %d readings from %s", len(records), deviceName)
-
 	// 增加MQTT消息处理计数
 	if c.monitor != nil {
 		c.monitor.IncrementMQTTMessagesProcessed()
@@ -252,47 +234,42 @@ func (c *Client) storeData(records []*map[string]any, deviceName string) {
 
 // analyzeData 分析数据
 func (c *Client) analyzeData(records []*map[string]any, deviceName string) {
-	if c.analyzer != nil && c.analyzer.IsEnabled() {
-		// 按reading分组分析数据
-		readingDataMap := make(map[string][]map[string]interface{}, len(records))
-		for _, record := range records {
-			// 从记录中获取reading信息
-			readingName, ok := (*record)["reading"].(string)
-			if !ok {
-				continue
-			}
-			readingDataMap[readingName] = append(readingDataMap[readingName], *record)
+	if c.analyzer == nil || !c.analyzer.IsEnabled() {
+		return
+	}
+
+	// 按reading分组分析数据
+	readingDataMap := make(map[string][]map[string]interface{}, len(records))
+	for _, record := range records {
+		// 从记录中获取reading信息
+		readingName, ok := (*record)["reading"].(string)
+		if !ok {
+			continue
 		}
+		readingDataMap[readingName] = append(readingDataMap[readingName], *record)
+	}
 
-		// 对每个reading进行分析
-		for readingName, analysisData := range readingDataMap {
-			// 分析数据
-			results, alerts := c.analyzer.Analyze(analysisData, deviceName, readingName)
+	// 对每个reading进行分析
+	for readingName, analysisData := range readingDataMap {
+		// 分析数据
+		results, alerts := c.analyzer.Analyze(analysisData, deviceName, readingName)
 
-			// 处理分析结果
-			if len(results) > 0 {
-				log.Printf("Analysis completed for %s: %d results", readingName, len(results))
-				// 这里可以将分析结果存储或发送到其他系统
-			}
-
-			// 处理告警
-			if len(alerts) > 0 {
-				log.Printf("Detected %d alerts for %s", len(alerts), readingName)
-				// 这里可以将告警发送到监控系统或其他通知渠道
-				for _, alert := range alerts {
-					log.Printf("Alert: %s - %s - %s", alert.Severity, alert.Message, alert.Reading)
-					// 触发监控告警
-					if c.monitor != nil {
-						c.monitor.RecordError(alert.AlertType, alert.Message)
-					}
+		// 处理告警
+		if len(alerts) > 0 {
+			for _, alert := range alerts {
+				if c.monitor != nil {
+					c.monitor.RecordError(alert.AlertType, alert.Message)
 				}
-
-				// 推送告警数据
-				c.broadcastData("alerts", map[string]interface{}{
-					"deviceName": deviceName,
-					"alerts":     alerts,
-				})
 			}
+
+			// 推送告警数据到 WebSocket（Web 端已展示，无需日志）
+			c.broadcastData("alerts", map[string]interface{}{
+				"deviceName": deviceName,
+				"alerts":     alerts,
+			})
 		}
+
+		// 及时释放分析结果
+		_ = results
 	}
 }

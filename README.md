@@ -197,6 +197,8 @@
 - 🛠️ **零摩擦配置**：智能默认值，无需复杂配置
 - 🔍 **健康自检**：启动时自动检查MQTT连接和订阅状态
 - 📦 **一键恢复**：自动备份和从最新备份恢复功能
+- 🎯 **场景化默认配置**：行业模板、自适应基线、安全红线
+- 📋 **基线管理**：基于历史数据的动态阈值生成
 
 ***
 
@@ -371,6 +373,28 @@ GET /query?deviceName=Device001&startTime=2024-01-01T00:00:00Z&endTime=2024-12-3
 
 ```bash
 GET /alerts
+```
+
+### 模板管理
+
+```bash
+# 获取模板列表
+GET /api/templates
+
+# 应用模板
+POST /api/templates/apply
+Body: {"industry": "motor"}
+```
+
+### 基线管理
+
+```bash
+# 计算基线
+POST /api/baselines/calculate
+Body: {"deviceName": "temperature-sensor-001", "readingName": "temperature"}
+
+# 获取基线列表
+GET /api/baselines
 ```
 
 完整 API 文档请查看 [API 文档](./docs/api.md)

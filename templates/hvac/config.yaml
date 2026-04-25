@@ -1,0 +1,75 @@
+# 暖通空调类设备配置模板
+# 适用：写字楼、机房、洁净室
+
+# 设备配置
+devices:
+  - name: "temperature-sensor"
+    type: "temperature"
+    model: "TS-300"
+    parameters:
+      sample_rate: 10
+      unit: "Celsius"
+    thresholds:
+      warning: 26.0   # °C
+      critical: 28.0  # °C
+
+  - name: "humidity-sensor"
+    type: "humidity"
+    model: "HS-100"
+    parameters:
+      sample_rate: 10
+      unit: "%"
+    thresholds:
+      warning: 60.0   # %
+      critical: 70.0  # %
+
+  - name: "pressure-sensor"
+    type: "pressure"
+    model: "PS-200"
+    parameters:
+      sample_rate: 5
+      unit: "hPa"
+    thresholds:
+      warning: 1020.0  # hPa
+      critical: 1030.0 # hPa
+
+  - name: "co2-sensor"
+    type: "co2"
+    model: "CO2-100"
+    parameters:
+      sample_rate: 5
+      unit: "ppm"
+    thresholds:
+      warning: 1000.0  # ppm
+      critical: 1500.0 # ppm
+
+# 告警配置
+alerts:
+  - rule: "temperature_out_of_range"
+    condition: "value < 22.0 or value > 26.0"
+    message: "温度超出舒适范围"
+    level: "warning"
+
+  - rule: "humidity_out_of_range"
+    condition: "value < 40.0 or value > 60.0"
+    message: "湿度超出舒适范围"
+    level: "warning"
+
+  - rule: "co2_high"
+    condition: "value > thresholds.critical"
+    message: "二氧化碳浓度过高"
+    level: "critical"
+
+# 自适应基线设置
+baseline:
+  enabled: true
+  learning_period: 3  # 学习期（天）
+  std_multiplier: 2   # 标准差倍数
+  min_threshold: 1.0  # 最小阈值
+  max_threshold: 5.0  # 最大阈值
+
+# 安全红线（硬编码）
+safety_limits:
+  temperature: 40.0   # °C
+  humidity: 90.0      # %
+  co2: 5000.0         # ppm

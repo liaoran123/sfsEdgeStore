@@ -124,10 +124,8 @@ func (rm *ResourceMonitor) checkResources() {
 
 // collectUsage 收集资源使用数据
 func (rm *ResourceMonitor) collectUsage() ResourceUsage {
-	var memStats runtime.MemStats
-	runtime.ReadMemStats(&memStats)
-
-	memoryMB := float64(memStats.Alloc) / 1024 / 1024
+	// 获取进程的实际物理内存（Working Set），与任务管理器显示一致
+	memoryMB := rm.getProcessMemoryMB()
 	cpuPercent := rm.getCPUPercent()
 
 	return ResourceUsage{
@@ -140,6 +138,29 @@ func (rm *ResourceMonitor) collectUsage() ResourceUsage {
 	}
 }
 
+// getProcessMemoryMB 获取进程的实际物理内存（Working Set），与任务管理器显示一致
+func (rm *ResourceMonitor) getProcessMemoryMB() float64 {
+	pid := int32(os.Getpid())
+	proc, err := process.NewProcess(pid)
+	if err != nil {
+		// 如果获取失败，回退到使用 runtime.MemStats.Alloc
+		var memStats runtime.MemStats
+		runtime.ReadMemStats(&memStats)
+		return float64(memStats.Alloc) / 1024 / 1024
+	}
+
+	memInfo, err := proc.MemoryInfo()
+	if err != nil {
+		// 如果获取失败，回退到使用 runtime.MemStats.Alloc
+		var memStats runtime.MemStats
+		runtime.ReadMemStats(&memStats)
+		return float64(memStats.Alloc) / 1024 / 1024
+	}
+
+	// 返回进程的实际物理内存（Working Set/Resident Set），单位 MB
+	return float64(memInfo.RSS) / 1024 / 1024
+}
+
 // 全局变量，用于存储上一次的CPU使用率
 var lastCPUPercent float64
 var cpuInitialized bool
@@ -150,7 +171,7 @@ func (rm *ResourceMonitor) getCPUPercent() float64 {
 	if err != nil {
 		return 0
 	}
-	
+
 	// 限制CPU使用率在合理范围内
 	if percent > 100 {
 		percent = 100
@@ -158,7 +179,7 @@ func (rm *ResourceMonitor) getCPUPercent() float64 {
 	if percent < 0 {
 		percent = 0
 	}
-	
+
 	return percent
 }
 

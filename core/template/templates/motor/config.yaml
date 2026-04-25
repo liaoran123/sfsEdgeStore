@@ -1,0 +1,49 @@
+# 电机类设备配置模板
+# 适用：风机、水泵、空压机
+
+# 设备配置
+devices:
+  - name: "vibration-sensor"
+    type: "vibration"
+    model: "VS-100"
+    parameters:
+      sample_rate: 1000
+      sensitivity: 100
+    thresholds:
+      warning: 5.0    # mm/s
+      critical: 7.1   # mm/s (ISO 10816 标准)
+
+  - name: "temperature-sensor"
+    type: "temperature"
+    model: "TS-200"
+    parameters:
+      sample_rate: 10
+      unit: "Celsius"
+    thresholds:
+      warning: 75.0   # °C
+      critical: 85.0  # °C
+
+# 告警配置
+alerts:
+  - rule: "vibration_high"
+    condition: "value > thresholds.critical"
+    message: "设备震动超标"
+    level: "critical"
+
+  - rule: "temperature_high"
+    condition: "value > thresholds.critical"
+    message: "设备温度过高"
+    level: "critical"
+
+# 自适应基线设置
+baseline:
+  enabled: true
+  learning_period: 3  # 学习期（天）
+  std_multiplier: 3   # 标准差倍数
+  min_threshold: 0.5  # 最小阈值
+  max_threshold: 10.0 # 最大阈值
+
+# 安全红线（硬编码）
+safety_limits:
+  temperature: 150.0  # °C
+  vibration: 20.0     # mm/s

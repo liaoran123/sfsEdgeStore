@@ -20,6 +20,7 @@ import (
 	"sfsEdgeStore/core/database"
 	"sfsEdgeStore/core/mqtt"
 	"sfsEdgeStore/monitor"
+	"sfsEdgeStore/pathutil"
 	"sfsEdgeStore/queue"
 	"sfsEdgeStore/resource"
 	"sfsEdgeStore/retention"
@@ -113,6 +114,9 @@ func initComponents(appConfig *config.Config) (*Components, error) {
 	// 初始化监控
 	monitorInstance := monitor.NewMonitor(appConfig)
 
+	// 启动监控清理任务（定期清理过期设备和告警）
+	monitorInstance.StartCleanupRoutine()
+
 	// 初始化告警通知器
 	alertNotifier := alert.NewNotifier(appConfig)
 	monitorInstance.SetNotifier(alertNotifier)
@@ -141,8 +145,9 @@ func initComponents(appConfig *config.Config) (*Components, error) {
 	authManager := auth.NewAuthManager()
 	authManager.StartCleanupTask(24 * time.Hour)
 
-	// 初始化数据队列
-	dataQueue, err := queue.NewQueue("./data_queue")
+	//// 初始化数据队列
+	dataQueuePath, _ := pathutil.Join("data_queue")
+	dataQueue, err := queue.NewQueue(dataQueuePath)
 	if err != nil {
 		return nil, fmt.Errorf("数据队列初始化失败: %v", err)
 	}
@@ -179,13 +184,17 @@ func initComponents(appConfig *config.Config) (*Components, error) {
 		}
 	}
 
+	// 初始化MQTT客户端
 	var mqttClient *mqtt.Client
 	mqttClient, err = mqtt.NewClient(appConfig, dataQueue, monitorInstance, analyzerInstance, serverInstance)
 	if err != nil {
-		return nil, fmt.Errorf("MQTT客户端初始化失败: %v", err)
-	}
-	if err := mqttClient.Subscribe(); err != nil {
-		return nil, fmt.Errorf("MQTT订阅失败: %v", err)
+		log.Printf("MQTT客户端初始化失败: %v", err)
+		// 即使MQTT初始化失败，也继续启动HTTP服务器
+	} else {
+		if err := mqttClient.Subscribe(); err != nil {
+			log.Printf("MQTT订阅失败: %v", err)
+			// 即使MQTT订阅失败，也继续启动HTTP服务器
+		}
 	}
 
 	return &Components{
@@ -274,8 +283,6 @@ func waitForShutdown(c *Components) {
 	if c.Watchdog != nil {
 		c.Watchdog.Stop()
 	}
-
-	
 
 	// 断开MQTT连接
 	if c.MQTTClient != nil {

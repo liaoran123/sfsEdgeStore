@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"os"
 	"runtime"
 	"strings"
 	"sync"
@@ -19,6 +20,7 @@ import (
 	"sfsEdgeStore/device"
 
 	"github.com/liaoran123/sfsDb/management/monitor"
+	"github.com/shirou/gopsutil/v4/process"
 )
 
 // Monitor 监控管理器
@@ -39,6 +41,40 @@ type Monitor struct {
 	// 告警去重机制
 	alertDedupe map[string]time.Time // 告警去重映射 (key: type+deviceName)
 	dedupeMutex sync.Mutex           // 保护去重映射
+}
+
+// // 启动清理协程，用于定期清理过期设备和告警列表
+func (m *Monitor) StartCleanupRoutine() {
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			m.cleanupInactiveDevices()
+			m.trimAlertsList()
+		}
+	}()
+}
+
+func (m *Monitor) cleanupInactiveDevices() {
+	m.deviceMutex.Lock()
+	defer m.deviceMutex.Unlock()
+
+	now := time.Now()
+	for deviceName, status := range m.deviceStatus {
+		if now.Sub(status.LastActive) > 30*time.Minute {
+			delete(m.deviceStatus, deviceName)
+		}
+	}
+}
+
+func (m *Monitor) trimAlertsList() {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	if len(m.alerts) > 1000 {
+		m.alerts = m.alerts[len(m.alerts)-1000:]
+	}
 }
 
 // 告警分组信息
@@ -202,15 +238,15 @@ func extractDeviceTypeFromMessage(message string) string {
 
 // 告警类型到消息模板的映射
 var alertMessageTemplates = map[string]string{
-	"device_temperature_over_limit": "%s 温度超限",
-	"device_humidity_over_limit":    "%s 湿度超限",
-	"device_data_anomaly":           "%s 数据异常",
-	"http_requests":                 "HTTP请求频率过高",
-	"errors":                        "错误率过高",
-	"database_operations":           "数据库操作频率过高",
-	"device_offline":                "设备离线",
-	"device_online":                 "设备上线",
-	"device_data_trend":             "%s 数据趋势异常",
+	"device_temperature_over_limit": "%s Temperature Over Limit",
+	"device_humidity_over_limit":    "%s Humidity Over Limit",
+	"device_data_anomaly":           "%s Data Anomaly",
+	"http_requests":                 "HTTP Request Rate Too High",
+	"errors":                        "Error Rate Too High",
+	"database_operations":           "Database Operations Rate Too High",
+	"device_offline":                "Device Offline",
+	"device_online":                 "Device Online",
+	"device_data_trend":             "%s Data Trend Anomaly",
 }
 
 // 生成分组消息
@@ -224,22 +260,22 @@ func generateGroupMessage(alertType, deviceType string) string {
 			return template
 		}
 	}
-	return fmt.Sprintf("%s 告警", getDeviceTypeName(deviceType))
+	return fmt.Sprintf("%s Alert", getDeviceTypeName(deviceType))
 }
 
-// 获取设备类型中文名
+// Get device type name in English
 func getDeviceTypeName(deviceType string) string {
 	switch deviceType {
 	case "temperature-sensor":
-		return "温度传感器"
+		return "Temperature Sensor"
 	case "pressure-sensor":
-		return "压力传感器"
+		return "Pressure Sensor"
 	case "vibration-sensor":
-		return "振动传感器"
+		return "Vibration Sensor"
 	case "power-meter":
-		return "功率计"
+		return "Power Meter"
 	case "flow-meter":
-		return "流量计"
+		return "Flow Meter"
 	default:
 		return deviceType
 	}
@@ -396,14 +432,35 @@ func (m *Monitor) collectSystemMetrics() {
 	m.metrics.System.Goroutines = runtime.NumGoroutine()
 	m.metrics.System.Uptime = int64(time.Since(m.startTime).Seconds())
 
-	// 内存使用情况
-	var memStats runtime.MemStats
-	runtime.ReadMemStats(&memStats)
-	m.metrics.System.MemoryUsage = float64(memStats.Alloc) / 1024 / 1024 // MB
+	// 内存使用情况 - 使用 gopsutil 获取进程的实际物理内存（RSS），与任务管理器一致
+	m.metrics.System.MemoryUsage = m.getProcessMemoryMB()
 
 	// CPU使用率：Go标准库不支持获取进程CPU使用率，保持为0
 	// 可以通过goroutines数量间接判断负载
 	m.metrics.System.CPUUsage = 0
+}
+
+// getProcessMemoryMB 获取进程的实际物理内存（RSS），与任务管理器显示一致
+func (m *Monitor) getProcessMemoryMB() float64 {
+	pid := int32(os.Getpid())
+	proc, err := process.NewProcess(pid)
+	if err != nil {
+		// 如果获取失败，回退到使用 runtime.MemStats.Alloc
+		var memStats runtime.MemStats
+		runtime.ReadMemStats(&memStats)
+		return float64(memStats.Alloc) / 1024 / 1024
+	}
+
+	memInfo, err := proc.MemoryInfo()
+	if err != nil {
+		// 如果获取失败，回退到使用 runtime.MemStats.Alloc
+		var memStats runtime.MemStats
+		runtime.ReadMemStats(&memStats)
+		return float64(memStats.Alloc) / 1024 / 1024
+	}
+
+	// 返回进程的实际物理内存（Working Set/Resident Set），单位 MB
+	return float64(memInfo.RSS) / 1024 / 1024
 }
 
 // collectDatabaseMetrics 收集数据库指标
@@ -530,9 +587,13 @@ func (m *Monitor) UpdateDeviceStatus(deviceName, reading string, value float64) 
 
 			m.mutex.Lock()
 			m.alerts = append(m.alerts, alert)
+			// 限制告警列表大小，保留最近 1000 条
+			if len(m.alerts) > 1000 {
+				m.alerts = m.alerts[len(m.alerts)-1000:]
+			}
 			m.mutex.Unlock()
 
-			log.Printf("Device data anomaly detected: %s - %s", deviceName, alert.Message)
+			// 告警已通过 WebSocket 推送到 Web 端，无需重复输出日志
 
 			// 发送告警通知
 			if m.notifier != nil {
@@ -570,9 +631,13 @@ func (m *Monitor) UpdateDeviceStatus(deviceName, reading string, value float64) 
 
 				m.mutex.Lock()
 				m.alerts = append(m.alerts, alert)
+				// 限制告警列表大小，保留最近 1000 条
+				if len(m.alerts) > 1000 {
+					m.alerts = m.alerts[len(m.alerts)-1000:]
+				}
 				m.mutex.Unlock()
 
-				log.Printf("Device data trend detected: %s - %s", deviceName, alert.Message)
+				// 告警已通过 WebSocket 推送到 Web 端，无需重复输出日志
 
 				// 发送告警通知
 				if m.notifier != nil {
@@ -613,9 +678,13 @@ func (m *Monitor) UpdateDeviceStatus(deviceName, reading string, value float64) 
 
 				m.mutex.Lock()
 				m.alerts = append(m.alerts, alert)
+				// 限制告警列表大小，保留最近 1000 条
+				if len(m.alerts) > 1000 {
+					m.alerts = m.alerts[len(m.alerts)-1000:]
+				}
 				m.mutex.Unlock()
 
-				log.Printf("Device temperature over limit: %s - %s", deviceName, alert.Message)
+				// 告警已通过 WebSocket 推送到 Web 端，无需重复输出日志
 
 				// 发送告警通知
 				if m.notifier != nil {
@@ -638,9 +707,13 @@ func (m *Monitor) UpdateDeviceStatus(deviceName, reading string, value float64) 
 
 				m.mutex.Lock()
 				m.alerts = append(m.alerts, alert)
+				// 限制告警列表大小，保留最近 1000 条
+				if len(m.alerts) > 1000 {
+					m.alerts = m.alerts[len(m.alerts)-1000:]
+				}
 				m.mutex.Unlock()
 
-				log.Printf("Device humidity over limit: %s - %s", deviceName, alert.Message)
+				// 告警已通过 WebSocket 推送到 Web 端，无需重复输出日志
 
 				// 发送告警通知
 				if m.notifier != nil {

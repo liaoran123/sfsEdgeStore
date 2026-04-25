@@ -1,0 +1,65 @@
+# 电力类设备配置模板
+# 适用：配电柜、变压器
+
+# 设备配置
+devices:
+  - name: "voltage-sensor"
+    type: "voltage"
+    model: "VS-500"
+    parameters:
+      sample_rate: 5
+      unit: "V"
+    thresholds:
+      warning: 242.0   # V (220V + 10%)
+      critical: 253.0  # V (220V + 15%)
+
+  - name: "current-sensor"
+    type: "current"
+    model: "CS-300"
+    parameters:
+      sample_rate: 5
+      unit: "A"
+    thresholds:
+      warning: 110.0   # A (100A + 10%)
+      critical: 120.0  # A (100A + 20%)
+
+  - name: "power-factor-sensor"
+    type: "power_factor"
+    model: "PFS-100"
+    parameters:
+      sample_rate: 5
+      unit: ""
+    thresholds:
+      warning: 0.85    # 功率因数
+      critical: 0.80   # 功率因数
+
+# 告警配置
+alerts:
+  - rule: "voltage_out_of_range"
+    condition: "value < 198.0 or value > 242.0"
+    message: "电压超出正常范围"
+    level: "warning"
+
+  - rule: "current_overload"
+    condition: "value > thresholds.critical"
+    message: "电流过载"
+    level: "critical"
+
+  - rule: "power_factor_low"
+    condition: "value < thresholds.critical"
+    message: "功率因数过低"
+    level: "warning"
+
+# 自适应基线设置
+baseline:
+  enabled: true
+  learning_period: 3  # 学习期（天）
+  std_multiplier: 2   # 标准差倍数
+  min_threshold: 0.05 # 最小阈值
+  max_threshold: 0.20 # 最大阈值
+
+# 安全红线（硬编码）
+safety_limits:
+  voltage: 264.0     # V (220V + 20%)
+  current: 150.0     # A (100A + 50%)
+  power_factor: 0.70  # 功率因数

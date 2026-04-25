@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
+	"sfsEdgeStore/pathutil"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
@@ -97,6 +99,16 @@ type Config struct {
 	// 许可证配置
 	LicenseType        string             `json:"license_type" env:"EDGEX_LICENSE_TYPE"` // "community" | "business" | "enterprise"
 	LicenseKey         string             `json:"license_key" env:"EDGEX_LICENSE_KEY"`   // 许可证密钥
+	// 行业模板配置
+	IndustryTemplate   string             `json:"industry_template" env:"EDGEX_INDUSTRY_TEMPLATE"` // 行业模板
+	// 设备配置
+	Devices            []map[string]interface{} `json:"devices"`
+	// 告警配置
+	Alerts             []map[string]interface{} `json:"alerts"`
+	// 基线配置
+	Baseline           map[string]interface{}   `json:"baseline"`
+	// 安全红线配置
+	SafetyLimits       map[string]interface{}   `json:"safety_limits"`
 	EnterpriseFeatures EnterpriseFeatures `json:"enterprise_features"`                   // 功能开关
 	// 自定义订阅主题
 	CustomTopics []string `json:"custom_topics"` // 自定义MQTT订阅主题
@@ -335,7 +347,11 @@ func applySmartDefaults(cfg *Config) {
 
 	// DB Path 默认值
 	if cfg.DBPath == "" {
-		cfg.DBPath = "./data/sfs.db"
+		if dbPath, err := pathutil.Join("data", "sfs.db"); err == nil {
+			cfg.DBPath = dbPath
+		} else {
+			cfg.DBPath = "data/sfs.db"
+		}
 	}
 
 	// 确保数据目录存在
@@ -344,24 +360,7 @@ func applySmartDefaults(cfg *Config) {
 
 // ensureDataDir 确保数据目录存在
 func ensureDataDir(dbPath string) {
-	// 提取目录部分
-	dir := dbPath
-	if len(dbPath) > 0 && dbPath[len(dbPath)-1] != '/' {
-		lastSlash := -1
-		for i := len(dbPath) - 1; i >= 0; i-- {
-			if dbPath[i] == '/' || dbPath[i] == '\\' {
-				lastSlash = i
-				break
-			}
-		}
-		if lastSlash != -1 {
-			dir = dbPath[:lastSlash]
-		} else {
-			dir = "."
-		}
-	}
-
-	// 创建目录
+	dir := filepath.Dir(dbPath)
 	if dir != "" {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			log.Printf("Failed to create data directory: %v", err)
@@ -398,30 +397,37 @@ type License struct {
 // 宽限期（天） - 到期后 30 天内依然有温馨提示
 const GracePeriodDays = 30
 
-// 许可证文件路径
+	// 许可证文件路径
 const LicenseFilePath = "license.json"
+
+// GetLicenseFilePath 获取许可证文件绝对路径
+func GetLicenseFilePath() (string, error) {
+	return pathutil.Join(LicenseFilePath)
+}
 
 // LoadLicense 加载许可证
 func LoadLicense() (*License, error) {
-	// 首先尝试读取独立的 license.json
-	if _, err := os.Stat(LicenseFilePath); err == nil {
-		data, err := os.ReadFile(LicenseFilePath)
+	licensePath, err := GetLicenseFilePath()
+	if err != nil {
+		licensePath = LicenseFilePath
+	}
+	
+	if _, err := os.Stat(licensePath); err == nil {
+		data, err := os.ReadFile(licensePath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read license file: %w", err)
 		}
 		var lic License
 		if err := json.Unmarshal(data, &lic); err == nil {
-			// 补全默认值
 			fillLicenseDefaults(&lic)
 			return &lic, nil
 		}
 	}
 
-	// 没有找到 license.json，返回默认的社区版许可证
 	return &License{
 		LicenseType: "community",
 		IssuedDate:  time.Now().Format(time.RFC3339),
-		ExpiryDate:  "", // 社区版永不过期
+		ExpiryDate:  "",
 		MaxDevices:  5,
 		LicenseKey:  "community-free",
 	}, nil
@@ -429,11 +435,16 @@ func LoadLicense() (*License, error) {
 
 // SaveLicense 保存许可证
 func SaveLicense(lic *License) error {
+	licensePath, err := GetLicenseFilePath()
+	if err != nil {
+		licensePath = LicenseFilePath
+	}
+	
 	data, err := json.MarshalIndent(lic, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal license: %w", err)
 	}
-	if err := os.WriteFile(LicenseFilePath, data, 0644); err != nil {
+	if err := os.WriteFile(licensePath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write license file: %w", err)
 	}
 	return nil

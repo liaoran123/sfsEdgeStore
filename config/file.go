@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+
+	"sfsEdgeStore/pathutil"
 )
 
 // SimpleConfig 简化配置，只包含最核心的项
@@ -19,8 +21,11 @@ type SimpleConfig struct {
 // loadFromFile 从配置文件加载配置
 // 优先尝试完整配置，再尝试简单配置
 func loadFromFile(cfg *Config) error {
-	// 1. 先尝试完整配置文件
-	configFile := "config.json"
+	configFile, err := pathutil.Join("config.json")
+	if err != nil {
+		configFile = "config.json"
+	}
+	
 	if _, err := os.Stat(configFile); err == nil {
 		data, err := os.ReadFile(configFile)
 		if err != nil {

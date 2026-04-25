@@ -9,6 +9,7 @@ import (
 	"github.com/liaoran123/sfsDb/engine"
 )
 
+// 管理数据的保留策略
 type RetentionManager struct {
 	table     *engine.Table
 	config    *config.Config
@@ -127,11 +128,17 @@ func (rm *RetentionManager) cleanupBatch(cutoffTimestamp int64, batchSize int) (
 }
 
 func (rm *RetentionManager) GetRetentionStatus() map[string]any {
+	// 从配置管理器获取最新的配置
+	latestConfig := config.GetConfigManager().GetConfig()
+	if latestConfig == nil {
+		latestConfig = rm.config
+	}
+
 	return map[string]any{
-		"enabled":            rm.config.EnableRetentionPolicy,
-		"retention_days":     rm.config.RetentionDays,
-		"cleanup_interval":   rm.config.CleanupInterval,
-		"cleanup_batch_size": rm.config.CleanupBatchSize,
+		"enabled":            latestConfig.EnableRetentionPolicy,
+		"retention_days":     latestConfig.RetentionDays,
+		"cleanup_interval":   latestConfig.CleanupInterval,
+		"cleanup_batch_size": latestConfig.CleanupBatchSize,
 		"is_running":         rm.isRunning,
 	}
 }
