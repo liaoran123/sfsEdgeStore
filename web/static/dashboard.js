@@ -50,6 +50,97 @@ function exportData() {
     }
 }
 
+// Settings Modal
+function openSettings() {
+    fetch('/api/config/get')
+        .then(response => response.json())
+        .then(data => {
+            const config = data.config || data;
+            
+            const modal = new bootstrap.Modal(document.getElementById('settingsModal'));
+            modal.show();
+            
+            setTimeout(() => {
+                document.getElementById('settingMqttBroker').value = config.mqtt_broker || 'tcp://localhost:1883';
+                document.getElementById('settingDbPath').value = config.db_path || 'data/sfs.db';
+                document.getElementById('settingDbScenario').value = config.db_scenario || 'edge';
+                document.getElementById('settingHttpPort').value = config.http_port || '8081';
+                
+                document.getElementById('settingResourceMonitoring').checked = config.enable_resource_monitoring || false;
+                document.getElementById('settingMaxMemory').value = config.max_memory_mb || 45;
+                document.getElementById('settingRetentionPolicy').checked = config.enable_retention_policy || false;
+                document.getElementById('settingRetentionDays').value = config.retention_days || 30;
+            }, 100);
+        })
+        .catch(error => {
+            console.error('Failed to get config:', error);
+            
+            const modal = new bootstrap.Modal(document.getElementById('settingsModal'));
+            modal.show();
+            
+            setTimeout(() => {
+                document.getElementById('settingMqttBroker').value = 'tcp://localhost:1883';
+                document.getElementById('settingDbPath').value = 'data/sfs.db';
+                document.getElementById('settingDbScenario').value = 'edge';
+                document.getElementById('settingHttpPort').value = '8081';
+                document.getElementById('settingResourceMonitoring').checked = false;
+                document.getElementById('settingMaxMemory').value = 45;
+                document.getElementById('settingRetentionPolicy').checked = false;
+                document.getElementById('settingRetentionDays').value = 30;
+            }, 100);
+        });
+}
+
+function saveSettings() {
+    const configData = {
+        mqtt_broker: document.getElementById('settingMqttBroker').value,
+        db_path: document.getElementById('settingDbPath').value,
+        db_scenario: document.getElementById('settingDbScenario').value,
+        http_port: document.getElementById('settingHttpPort').value,
+        enable_resource_monitoring: document.getElementById('settingResourceMonitoring').checked,
+        max_memory_mb: parseInt(document.getElementById('settingMaxMemory').value),
+        enable_retention_policy: document.getElementById('settingRetentionPolicy').checked,
+        retention_days: parseInt(document.getElementById('settingRetentionDays').value)
+    };
+    
+    fetch('/api/config/update', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(configData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert('Settings saved successfully! A restart may be required for some changes to take effect.');
+            const modal = bootstrap.Modal.getInstance(document.getElementById('settingsModal'));
+            modal.hide();
+            fetchData();
+            fetchMetrics();
+        } else {
+            alert('Save failed: ' + (data.message || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Save settings failed:', error);
+        alert('Save failed, please check network connection');
+    });
+}
+
+function applyRecommendedSettings() {
+    document.getElementById('settingMqttBroker').value = 'tcp://localhost:1883';
+    document.getElementById('settingDbPath').value = 'data/sfs.db';
+    document.getElementById('settingDbScenario').value = 'edge';
+    document.getElementById('settingHttpPort').value = '8081';
+    document.getElementById('settingResourceMonitoring').checked = true;
+    document.getElementById('settingMaxMemory').value = 45;
+    document.getElementById('settingRetentionPolicy').checked = true;
+    document.getElementById('settingRetentionDays').value = 30;
+    
+    alert('Recommended settings applied. Please review and click Save & Apply to save.');
+}
+
 // Data Retention
 function openRetentionSettings() {
     // Get current settings from server

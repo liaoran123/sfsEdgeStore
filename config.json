@@ -1,11 +1,11 @@
 {
-  "db_path": "./data",
-  "mqtt_broker": "tcp://localhost:1883",
+  "db_path": "./mydata",
+  "mqtt_broker": "tcp://192.168.1.100:1883",
   "mqtt_topic": "edgex/events/#",
-  "client_id": "sfsdb-edgex-adapter-20260424153756",
+  "client_id": "",
   "http_port": "8081",
-  "dev_config_path": "./devconfig",
-  "auto_subscribe": true,
+  "dev_config_path": "",
+  "auto_subscribe": false,
   "mqtt_use_tls": false,
   "mqtt_ca_cert": "",
   "mqtt_client_cert": "",
@@ -24,8 +24,8 @@
   "analyzer_max_memory": 0,
   "analyzer_max_time_per_run": 0,
   "analyzer_thresholds": null,
-  "enable_retention_policy": false,
-  "retention_days": 0,
+  "enable_retention_policy": true,
+  "retention_days": 30,
   "cleanup_interval_hours": 0,
   "cleanup_batch_size": 0,
   "enable_alert_notifications": false,
@@ -40,7 +40,7 @@
   "data_sync_interval_seconds": 0,
   "data_sync_max_retry_count": 0,
   "enable_resource_monitoring": true,
-  "max_memory_mb": 0,
+  "max_memory_mb": 45,
   "max_cpu_percent": 0,
   "resource_monitor_interval_seconds": 0,
   "device_offline_threshold_seconds": 0,
@@ -52,7 +52,7 @@
   "enable_simulator": false,
   "simulator_interval_min": 0,
   "simulator_interval_max": 0,
-  "license_type": "enterprise",
+  "license_type": "",
   "license_key": "",
   "industry_template": "",
   "devices": null,
@@ -67,7 +67,5 @@
     "enable_big_screen_mode": false,
     "max_devices": 0
   },
-  "custom_topics": [
-    "edgex/v3/events/#"
-  ]
+  "custom_topics": null
 }

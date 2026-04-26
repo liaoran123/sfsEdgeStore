@@ -455,10 +455,9 @@
                             </button>
                             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="quickActionsDropdown" style="background: var(--tertiary-color); border: 1px solid var(--secondary-color);">
                                 <li><button class="dropdown-item" onclick="refreshData()" style="color: var(--text-color);" data-i18n="refresh">🔄 Refresh Data</button></li>
+                                <li><button class="dropdown-item" onclick="openSettings()" style="color: var(--text-color);" data-i18n="nav.settings">⚙️ Settings</button></li>
                                 <li><button class="dropdown-item" onclick="openTopicSubscription()" style="color: var(--text-color);" data-i18n="nav.subscription">📡 Topic Subscription</button></li>
-                                <li><button class="dropdown-item" onclick="oneClickConfig()" style="color: var(--text-color);" data-i18n="oneclick.config">✨ One-click Config</button></li>
                                 <li><button class="dropdown-item" onclick="exportData()" style="color: var(--text-color);" data-i18n="export">💾 Export Data</button></li>
-                                <li><button class="dropdown-item" onclick="openRetentionSettings()" style="color: var(--text-color);" data-i18n="data.retention">🗑️ Data Retention</button></li>
                             </ul>
                         </div>
                     </nav>
@@ -618,33 +617,121 @@
 
     <!-- Data Retention Modal -->
     <div class="modal fade" id="retentionSettingsModal" tabindex="-1" aria-labelledby="retentionSettingsModalLabel" aria-hidden="true">
-        <div class="modal-dialog" style="background: var(--primary-color); border: 1px solid var(--secondary-color); border-radius: 10px; color: var(--text-color);">
-            <div class="modal-content" style="background: var(--primary-color); border: none;">
-                <div class="modal-header" style="border-bottom: 1px solid var(--secondary-color);">
+        <div class="modal-dialog" style="background: var(--secondary-color); border: 1px solid var(--secondary-color); border-radius: 10px; color: var(--text-color);">
+            <div class="modal-content" style="background: var(--secondary-color); border: none;">
+                <div class="modal-header" style="border-bottom: 1px solid var(--tertiary-color);">
                     <h5 class="modal-title" id="retentionSettingsModalLabel" data-i18n="data.retention">🗑️ Data Retention</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" style="filter: invert(1);"></button>
                 </div>
-                <div class="modal-body" style="background: var(--primary-color); color: var(--text-color);">
+                <div class="modal-body" style="background: var(--secondary-color); color: var(--text-color);">
                     <div class="mb-3">
                         <label for="retentionDays" class="form-label" data-i18n="retention.period">Retention Period (days)</label>
-                        <input type="number" class="form-control" id="retentionDays" min="1" max="365" value="30" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--secondary-color);">
+                        <input type="number" class="form-control" id="retentionDays" min="1" max="365" value="30" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
                     </div>
                     <div class="mb-3">
                         <label for="cleanupInterval" class="form-label" data-i18n="cleanup.interval">Cleanup Interval</label>
-                        <select class="form-select" id="cleanupInterval" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--secondary-color);">
+                        <select class="form-select" id="cleanupInterval" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
                             <option value="daily" data-i18n="daily">Daily</option>
                             <option value="weekly" data-i18n="weekly">Weekly</option>
                             <option value="monthly" data-i18n="monthly">Monthly</option>
                         </select>
                     </div>
                 </div>
-                <div class="modal-footer" style="border-top: 1px solid var(--secondary-color);">
+                <div class="modal-footer" style="border-top: 1px solid var(--tertiary-color);">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="cancel">Cancel</button>
                     <button type="button" class="btn btn-primary" onclick="saveRetentionSettings()" data-i18n="save.settings">Save Settings</button>
                 </div>
             </div>
         </div>
     </div>
+
+    <!-- Settings Modal -->
+    <div class="modal fade" id="settingsModal" tabindex="-1" aria-labelledby="settingsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg" style="background: var(--secondary-color); border: 1px solid var(--tertiary-color); border-radius: 10px; color: var(--text-color);">
+            <div class="modal-content" style="background: var(--secondary-color); border: none;">
+                <div class="modal-header" style="border-bottom: 1px solid var(--tertiary-color);">
+                    <h5 class="modal-title" id="settingsModalLabel">⚙️ <span data-i18n="settings">Settings</span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" style="filter: invert(1);"></button>
+                </div>
+                <div class="modal-body" style="background: var(--secondary-color); color: var(--text-color);">
+                    <!-- Connection -->
+                    <div class="mb-4">
+                        <h6 class="text-primary mb-3" data-i18n="connection.settings">🔗 Connection</h6>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="settingMqttBroker" class="form-label" data-i18n="mqtt.broker">MQTT Broker</label>
+                                <input type="text" class="form-control" id="settingMqttBroker" placeholder="tcp://localhost:1883" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="settingHttpPort" class="form-label" data-i18n="http.port">HTTP Port</label>
+                                <input type="number" class="form-control" id="settingHttpPort" placeholder="8081" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" data-i18n="note">💡 MQTT Topic</label>
+                                <p class="text-muted form-text" data-i18n="mqtt.topic.note">Managed in Topic Subscription page</p>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Storage -->
+                    <div class="mb-4">
+                        <h6 class="text-primary mb-3" data-i18n="storage.settings">💾 Storage</h6>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="settingDbPath" class="form-label" data-i18n="db.path">Database Path</label>
+                                <input type="text" class="form-control" id="settingDbPath" placeholder="data/sfs.db" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="settingDbScenario" class="form-label" data-i18n="db.scenario">DB Scenario</label>
+                                <select class="form-select" id="settingDbScenario" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
+                                    <option value="embedded">Embedded</option>
+                                    <option value="iot">IoT</option>
+                                    <option value="edge">Edge</option>
+                                    <option value="game">Game</option>
+                                    <option value="default">Default</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label for="settingHttpPort" class="form-label" data-i18n="http.port">HTTP Port</label>
+                                <input type="number" class="form-control" id="settingHttpPort" placeholder="8081" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Resource & Retention -->
+                    <div class="mb-3">
+                        <h6 class="text-primary mb-3" data-i18n="resource.retention">📊 Resource & Retention</h6>
+                        <div class="row g-3">
+                            <div class="col-md-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="settingResourceMonitoring" style="background-color: rgba(0,0,0,0.2); border-color: var(--tertiary-color);">
+                                    <label class="form-check-label" for="settingResourceMonitoring" data-i18n="resource.monitoring">Resource Monitor</label>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <label for="settingMaxMemory" class="form-label" data-i18n="max.memory">Max Memory (MB)</label>
+                                <input type="number" class="form-control" id="settingMaxMemory" min="1" max="4096" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="settingRetentionPolicy" style="background-color: rgba(0,0,0,0.2); border-color: var(--tertiary-color);">
+                                    <label class="form-check-label" for="settingRetentionPolicy" data-i18n="retention.policy">Retention Policy</label>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <label for="settingRetentionDays" class="form-label" data-i18n="retention.days">Retention Days</label>
+                                <input type="number" class="form-control" id="settingRetentionDays" min="1" max="365" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer" style="border-top: 1px solid var(--tertiary-color);">
+                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="cancel">Cancel</button>
+                     <button type="button" class="btn btn-outline-primary" onclick="applyRecommendedSettings()" data-i18n="apply.recommended">✨ Recommended</button>
+                     <button type="button" class="btn btn-primary" onclick="saveSettings()" data-i18n="save.settings">Save & Apply</button>
+                 </div>
+            </div>
+        </div>
+    </div>
+
 
 </body>
 </html>

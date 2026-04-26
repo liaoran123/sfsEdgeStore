@@ -12,13 +12,72 @@ Complete configuration reference for sfsEdgeStore.
 
 Create `config.json` in the application root directory.
 
+## Common Configuration (Start Here)
+
+Most customers only need to customize a few key settings. Here are the most frequently modified configurations, ordered by priority.
+
+### Must Customize (Almost Every Deployment)
+
+| Key | Default | Typical Value | Why Change |
+|-----|---------|---------------|------------|
+| `mqtt_broker` | `tcp://localhost:1883` | Your MQTT server address | Each customer has their own MQTT broker |
+| `db_path` | `data/sfs.db` | `/var/lib/sfsedgestore/data/sfs.db` | Production usually requires fixed storage paths |
+| `http_port` | `8081` | Available port | May conflict with existing services |
+
+> **Note:** MQTT Topic is managed through the **Topic Subscription** page (`/mqtt-subscription`) in the web dashboard.
+
+### Often Customize (Resource-Constrained or Compliance)
+
+| Key | Default | Why Change |
+|-----|---------|------------|
+| `enable_retention_policy` + `retention_days` | `false` / `30` | Limited edge device disk, need to control data volume |
+| `db_scenario` | `edge` | Match hardware performance (embedded/IoT/edge/game) |
+| `enable_resource_monitoring` + `max_memory_mb` | `false` / `45` | Resource-constrained devices need tuning |
+| `db_use_encryption` + `db_encryption_key` | `false` | GDPR compliance, healthcare, and other regulated industries |
+
+### Advanced (Enterprise / Special Scenarios)
+
+| Key | Default | Why Change |
+|-----|---------|------------|
+| `mqtt_use_tls` + certificate paths | `false` | Secure transport required |
+| `http_use_tls` + certificate paths | `false` | HTTPS required for external access |
+| `enable_data_sync` | `false` | Enterprise cloud sync feature |
+| `enable_alert_notifications` | `false` | Need alerting via MQTT/Webhook |
+| `enable_prometheus` | `false` | Integrate with Prometheus monitoring |
+| `custom_topics` | `[]` | Subscribe to multiple custom topics |
+
+### Rarely Customize (Defaults are Fine)
+
+| Key | Why Not Change |
+|-----|----------------|
+| `client_id` | Auto-generated with timestamp |
+| `analyzer_*` parameters | Default values already optimized |
+| `simulator_*` parameters | Only for development/testing |
+| `cleanup_batch_size` | 1000 is sufficient for most cases |
+| `connection_timeout` / `keep_alive` | Default values work universally |
+
+### Quick Start Example
+
+Minimal configuration for a production deployment:
+
+```json
+{
+  "mqtt_broker": "tcp://192.168.1.100:1883",
+  "mqtt_topic": "edgex/events/#",
+  "db_path": "/var/lib/sfsedgestore/data/sfs.db",
+  "http_port": "8081",
+  "enable_retention_policy": true,
+  "retention_days": 30
+}
+```
+
 ## Core Configuration
 
 | Key | Type | Environment Variable | Default | Description |
 |-----|------|---------------------|---------|-------------|
 | `db_path` | string | `EDGEX_DB_PATH` | `data/sfs.db` | Database storage path |
 | `mqtt_broker` | string | `EDGEX_MQTT_BROKER` | `tcp://localhost:1883` | MQTT broker URL |
-| `mqtt_topic` | string | `EDGEX_MQTT_TOPIC` | `edgex/events/core/#` | MQTT subscription topic |
+| `mqtt_topic` | string | `EDGEX_MQTT_TOPIC` | `edgex/events/#` | MQTT subscription topic |
 | `client_id` | string | `EDGEX_CLIENT_ID` | `sfsdb-edgex-adapter` | MQTT client ID |
 | `http_port` | string | `EDGEX_HTTP_PORT` | `8081` | HTTP server port |
 | `auto_subscribe` | bool | `EDGEX_AUTO_SUBSCRIBE` | `true` | Auto-subscribe to MQTT topic |
@@ -30,7 +89,7 @@ Create `config.json` in the application root directory.
 |-----|------|---------------------|---------|-------------|
 | `db_use_encryption` | bool | `EDGEX_DB_USE_ENCRYPTION` | `false` | Enable database encryption |
 | `db_encryption_key` | string | `EDGEX_DB_ENCRYPTION_KEY` | - | Encryption key |
-| `db_encryption_algorithm` | string | `EDGEX_DB_ENCRYPTION_ALGORITHM` | - | Encryption algorithm |
+| `db_encryption_algorithm` | string | `EDGEX_DB_ENCRYPTION_ALGORITHM` | `AES-256-GCM` | Encryption algorithm |
 | `db_scenario` | string | `EDGEX_DB_SCENARIO` | `edge` | Database scenario: `embedded`, `iot`, `edge`, `game`, `default` |
 
 ### Database Scenarios
@@ -77,9 +136,9 @@ Create `config.json` in the application root directory.
 
 | Key | Type | Environment Variable | Default | Description |
 |-----|------|---------------------|---------|-------------|
-| `enable_resource_monitoring` | bool | `EDGEX_ENABLE_RESOURCE_MONITORING` | `true` | Enable resource monitoring |
-| `max_memory_mb` | float | `EDGEX_MAX_MEMORY_MB` | `512` | Max memory (MB) |
-| `max_cpu_percent` | float | `EDGEX_MAX_CPU_PERCENT` | `80` | Max CPU (%) |
+| `enable_resource_monitoring` | bool | `EDGEX_ENABLE_RESOURCE_MONITORING` | `false` | Enable resource monitoring |
+| `max_memory_mb` | float | `EDGEX_MAX_MEMORY_MB` | `45` | Max memory (MB) |
+| `max_cpu_percent` | float | `EDGEX_MAX_CPU_PERCENT` | `5` | Max CPU (%) |
 | `resource_monitor_interval_seconds` | int | `EDGEX_RESOURCE_MONITOR_INTERVAL_SECONDS` | `30` | Monitor interval |
 
 ## Alert Configuration
@@ -109,15 +168,15 @@ Create `config.json` in the application root directory.
 |-----|------|---------------------|---------|-------------|
 | `device_offline_threshold_seconds` | int | `EDGEX_DEVICE_OFFLINE_THRESHOLD_SECONDS` | `300` | Offline threshold |
 | `data_anomaly_threshold_percent` | int | `EDGEX_DATA_ANOMALY_THRESHOLD_PERCENT` | `50` | Anomaly threshold (%) |
-| `data_trend_min_points` | int | `EDGEX_DATA_TREND_MIN_POINTS` | `10` | Min points for trend |
+| `data_trend_min_points` | int | `EDGEX_DATA_TREND_MIN_POINTS` | `5` | Min points for trend |
 
 ## Analyzer Configuration
 
 | Key | Type | Environment Variable | Default | Description |
 |-----|------|---------------------|---------|-------------|
 | `enable_analyzer` | bool | `EDGEX_ENABLE_ANALYZER` | `false` | Enable analyzer |
-| `analyzer_max_memory` | int | `EDGEX_ANALYZER_MAX_MEMORY` | `256` | Max memory (MB) |
-| `analyzer_max_time_per_run` | int | `EDGEX_ANALYZER_MAX_TIME_PER_RUN` | `5000` | Max time per run (ms) |
+| `analyzer_max_memory` | int | `EDGEX_ANALYZER_MAX_MEMORY` | `10` | Max memory (MB) |
+| `analyzer_max_time_per_run` | int | `EDGEX_ANALYZER_MAX_TIME_PER_RUN` | `500` | Max time per run (ms) |
 
 ## Prometheus Metrics
 
@@ -140,7 +199,7 @@ Create `config.json` in the application root directory.
 {
   "db_path": "data/sfs.db",
   "mqtt_broker": "tcp://localhost:1883",
-  "mqtt_topic": "edgex/events/core/#",
+  "mqtt_topic": "edgex/events/#",
   "client_id": "sfsdb-edgex-adapter",
   "http_port": "8081",
   "auto_subscribe": true,

@@ -32,7 +32,7 @@ sfsEdgeStore uses intelligent defaults. No configuration required to get started
 | Setting | Default Value |
 |---------|---------------|
 | MQTT Broker | `tcp://localhost:1883` |
-| MQTT Topic | `edgex/events/core/#` |
+| MQTT Topic | `edgex/events/#` |
 | HTTP Port | `8081` |
 | Database Path | `data/sfs.db` |
 
