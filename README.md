@@ -1,462 +1,205 @@
+[English](./README.md) | [中文](./README_zh.md)
+
 # sfsEdgeStore
 
-轻量级边缘计算数据存储适配器 - 解决边缘场景的数据存储痛点
+Lightweight Industrial IoT Edge Data Storage Adapter for EdgeX Foundry.
 
-***
+## Data Sovereignty & Compliance
 
-## 👥 开发团队
+**sfsEdgeStore** follows a **local-first architecture** that ensures **full data sovereignty**. All data is stored locally on the edge device - no cloud dependency, no data transfer to third parties.
 
-**sfsEdgeStore** 由 **sfsDb 官方团队** 精心打造，作为 sfsDb 数据库的官方边缘计算适配器，为工业物联网边缘场景提供专业的数据存储解决方案。
+- **GDPR Compliant**: Data never leaves your premises. No cross-border data transfer.
+- **EU Cyber Resilience Act Ready**: No dependency on external services.
+- **Encryption at Rest**: AES-256 database encryption ensures data is unreadable without your keys.
+- **Zero Vendor Lock-in**: Pure Go binary, embedded database, no external services required.
 
-***
+## ⚡ Performance
 
-## ⚡ 性能亮点
+| Metric | Value | Description |
+|--------|-------|-------------|
+| **Memory** | ~14 MB | Ultra-lightweight, suitable for resource-constrained devices |
+| **CPU** | <5% | Minimal overhead during normal operation |
+| **Startup** | <0.2s | Fast startup, ready in milliseconds |
+| **Database** | 0.25 MB / 18K records | Efficient storage with LevelDB |
 
-| 指标          | 实测值      | 说明                   |
-| ----------- | -------- | -------------------- |
-| **内存占用**    | 20.85 MB | 极轻量，适合资源受限设备         |
-| **CPU 使用率** | 2.9%     | 后台运行几乎不占用资源          |
-| **启动时间**    | 0.187 秒  | 极速启动，毫秒级响应           |
-| **数据库大小**   | 0.25 MB  | 18,681 条记录仅占 0.25 MB |
+![Dashboard](./img/sfsEdgeStoreEn.png)
 
-> 📊 **如何复现测试？** 详细的性能测试方法和基准测试代码请查看 [性能测试指南](./docs/BENCHMARK.md)
+## 🎯 Core Problem Solved
 
-***
+### Edge Computing Challenges
 
-## 🎯 解决的核心问题
+| Challenge | Solution |
+|-----------|----------|
+| Limited edge device resources | Memory <15MB, CPU <5%, ultra-lightweight |
+| Data loss during network outages | Local storage, offline operation |
+| Complex heavy database deployment | 5-minute deployment, zero configuration |
+| EdgeX Foundry storage gap | Native EdgeX integration, seamless setup |
+| Slow data query response | Local LevelDB, millisecond query response |
+| Cloud dependency | Independent operation, no center system required |
 
-### 边缘计算场景的痛点
+## 📋 Product Overview
 
-| 痛点                      | sfsEdgeStore 的解决方案       |
-| ----------------------- | ------------------------ |
-| **边缘设备资源有限**            | 内存 < 50MB，CPU < 5%，极轻量设计 |
-| **网络中断时数据丢失**           | 本地存储，断网不影响数据采集           |
-| **重型数据库部署复杂**           | 5 分钟部署，开箱即用              |
-| **EdgeX Foundry 数据存储难** | 原生集成 EdgeX Foundry，无缝对接  |
-| **数据查询响应慢**             | LevelDB 底层，本地查询毫秒级响应     |
-| **需要云端依赖**              | 可独立运行，不依赖中心系统            |
+**sfsEdgeStore** is a lightweight data storage adapter designed for industrial IoT edge scenarios. It serves as a bridge between EdgeX Foundry and sfsDb, providing efficient local data read/write and caching capabilities.
 
-***
+### Why EdgeX Needs sfsEdgeStore
 
-## 📋 产品简介
+> EdgeX is the best connectivity framework, but it doesn't persist data by default. Don't use Redis (data loss on power failure), don't use InfluxDB (too heavy for edge). sfsEdgeStore is EdgeX's native storage plugin, designed for resource-constrained edge gateways.
 
-**sfsEdgeStore** 是专为工业物联网边缘场景设计的轻量级数据存储适配器，作为 EdgeX Foundry 和 sfsDb 数据库之间的桥梁，提供高效的本地数据读写和缓存能力。
+## ✨ Key Features
 
-### EdgeX 存储解决方案
+- 📡 **MQTT Data Ingestion**: Subscribe to EdgeX Foundry event topics
+- 💾 **Local Data Storage**: sfsDb/LevelDB for efficient edge data storage
+- 🔒 **Data Encryption**: AES-256 encryption for data at rest
+- 🔄 **Reliable Queue**: Power-failure recovery and data retry mechanism
+- 📊 **Real-time Monitoring**: Built-in system and business metrics
+- ⚠️ **Smart Alerts**: Threshold alerts and anomaly detection
+- 🗑️ **Data Retention**: Automatic cleanup of expired data
+- 🔐 **Authentication**: API Key and RBAC access control
+- 🌐 **HTTP API**: RESTful interfaces for external queries
+- 📦 **Backup & Restore**: Automated backup and recovery
 
-> "EdgeX 是最好的连接框架，但它默认不存数据。别用 Redis（会丢数据），别用 InfluxDB（太卡太慢）。sfsEdgeStore 是 EdgeX 的原生存储插件，专为资源受限的边缘网关设计。"
+## 🚀 Quick Start
 
-**为什么选择 sfsEdgeStore 作为 EdgeX 的存储方案：**
+### Prerequisites
 
-- **解决 EdgeX 存储痛点**：EdgeX 本身不提供持久化存储，需要外部存储方案
-- **比 Redis 更可靠**：Redis 是内存数据库，断电会丢失数据
-- **比 InfluxDB 更轻量**：InfluxDB 资源占用高，在边缘设备上性能不佳
-- **原生集成**：作为 EdgeX 的存储插件，无缝对接，开箱即用
-- **专为边缘设计**：针对资源受限的边缘网关优化，极低的资源占用
+- Go 1.21+ (for building from source)
+- EdgeX Foundry (optional, for data source)
+- MQTT Broker (e.g., Mosquitto)
 
-## 🚀 核心优势：工业级数据底座
-
-底层采用新一代嵌入式数据库 **sfsDb** (纯 Go 实现)，专为恶劣工业环境设计。
-
-- **💾 断电不丢数据**
-  采用 WAL (预写日志) 和原子提交机制。即使现场突然断电或系统崩溃，数据依然安全完整。
-- **⚡ 高并发写入**
-  无锁架构设计，完美应对数百个传感器同时上报数据，彻底告别 SQLite 的 "Database Locked" 错误。
-- **🔍 类 SQL 查询**
-  支持标准 SQL 语法查询，工程师无需学习新语言，直接上手分析数据。
-- **📦 极致轻量**
-  纯 Go 编写，无 C 依赖。单二进制文件，内存占用极低 (<50MB)，老旧工控机也能流畅运行。
-
-### 核心价值
-
-- ✅ **纯 Go 实现**：无 CGO 依赖，无 DLL，无需 VC++ 运行库，扔进去就能跑
-- ✅ **极轻量**：资源占用极低，可在任何边缘设备上运行
-- ✅ **高可靠**：本地存储，断电不丢数据，网络中断不影响数据采集
-- ✅ **易集成**：与 EdgeX Foundry 原生集成，开箱即用
-- ✅ **高性能**：sfsDb 底层，本地查询毫秒级响应
-
-## 🌍 数据本地化优势
-
-### 符合 2026 年全球趋势
-
-**sfsEdgeStore** 采用 **本地优先（Local-First）** 架构，数据完全存储在本地，符合 2026 年全球数据隐私和网络弹性趋势。
-
-### 话术弹药库
-
-基于 2026 年的行业趋势和法规要求，你可以使用以下话术向客户证明数据本地化的价值：
-
-- **对欧洲客户**："我们的软件设计符合 2026 欧盟《网络弹性法案》，数据完全存储在本地，无需担心跨境合规风险。"
-- **对隐私敏感客户**："就像 CES 2026 展示的趋势一样，我们支持 Local-First（本地优先）架构，你的数据只属于你，不会被云厂商拿去训练 AI。"
-- **对老板/财务**："使用本地存储，你可以节省 100% 的云存储和带宽费用，而且断网也能正常工作。"
-
-**结论**：数据本地化不仅有法规支持，而且是 2026 年最确定的"政治正确"和"经济账"。
-
-***
-
-## 💼 定价与授权
-
-### 持续价值订阅
-
-针对工业物联网边缘场景，我们提供三个版本：
-
-| 版本         | 价格         | 设备限制 | 文档   | 支持     | 更新 |
-| ---------- | ---------- | ---- | ---- | ------ | -- |
-| 🆓 **社区版** | 免费         | 5台   | 基础   | 社区     | ❌  |
-| 💼 **商业版** | **$299/年** | 50台  | ✅ 完整 | ✅ 邮件   | ✅  |
-| 🚀 **企业版** | **$799/年** | 无限制  | ✅ 完整 | ✅ 优先邮件 | ✅  |
-
-### 订阅包含的服务
-
-**商业版（$299/年）：**
-
-- ✅ 完整文档：部署指南、最佳实践、API文档、故障排查
-- ✅ 邮件支持：72小时响应（工作日）
-- ✅ 安全更新：及时修复安全漏洞
-- ✅ 新功能：持续迭代，优先体验
-
-**企业版（$799/年）：**
-
-- ✅ 商业版全部服务
-- ✅ 优先邮件支持：48小时响应
-- ✅ 优先功能开发：需求优先考虑
-
-### 到期说明
-
-订阅到期后：
-
-- ✅ 软件功能继续可用（已购买的功能永久可用）
-- ❌ 文档访问降级为基础版
-- ❌ 邮件支持停止
-- ❌ 不再获得更新和新功能
-
-### 为什么选择订阅？
-
-- 📚 **完整文档**：省去自己摸索的时间
-- 🛡️ **安全保障**：及时的安全更新
-- 🚀 **持续进化**：新功能和性能优化
-- 💬 **邮件支持**：遇到问题可以咨询
-
-### 定价策略说明
-
-- **文档即服务**：完整文档是核心价值，持续更新
-- **价值导向**：价格反映了产品为企业创造的真实价值
-- **GDPR 友好**：尊重数据本地化法规
-- **信任定价**：符合欧美 B2B 软件市场标准
-
-### 许可证文件示例
-
-#### 社区版 (默认)
-
-无需配置文件，开箱即用！
-
-#### 商业版 license.json
-
-```json
-{
-  "license_type": "business",
-  "issued_date": "2024-04-21T00:00:00Z",
-  "expiry_date": "2025-04-21T00:00:00Z",
-  "max_devices": 50,
-  "license_key": "your-license-key-here"
-}
-```
-
-#### 企业版 license.json
-
-```json
-{
-  "license_type": "enterprise",
-  "issued_date": "2024-04-21T00:00:00Z",
-  "expiry_date": "2025-04-21T00:00:00Z",
-  "max_devices": 0,
-  "license_key": "your-license-key-here"
-}
-```
-
-### 续费说明
-
-- 到期前 30 天会显示温馨提示
-- 到期后 30 天宽限期内继续提示
-- 超过宽限期后，**功能依然可用**，但文档和支持停止
-- 续费后自动延长 1 年服务
-
-***
-
-## ✨ 核心功能
-
-- 📡 **MQTT 数据接入**：订阅 EdgeX Foundry 事件主题，支持自动订阅
-- 💾 **本地数据存储**：使用 sfsDb/LevelDB 高效存储边缘数据
-- 🔄 **数据队列**：断电恢复和数据重试机制，保证数据不丢失
-- 📊 **实时监控**：内置系统指标和业务指标监控
-- ⚠️ **智能告警**：阈值告警和异常检测
-- 📈 **数据分析**：内置时间窗口聚合和预测
-- 🔐 **认证授权**：API Key 和 RBAC 权限控制
-- 🌐 **HTTP API**：RESTful 接口供外部查询
-- 🔄 **数据同步**：可选的数据上云同步
-- 🗑️ **数据保留**：自动清理过期数据
-- 🛠️ **零摩擦配置**：智能默认值，无需复杂配置
-- 🔍 **健康自检**：启动时自动检查MQTT连接和订阅状态
-- 📦 **一键恢复**：自动备份和从最新备份恢复功能
-- 🎯 **场景化默认配置**：行业模板、自适应基线、安全红线
-- 📋 **基线管理**：基于历史数据的动态阈值生成
-
-***
-
-## 🚀 5 分钟快速开始
-
-### 前置条件
-
-- Go 1.25+（如需从源码编译）
-- EdgeX Foundry（可选，用于数据源）
-- MQTT Broker（如 Mosquitto）
-
-### 方式 1：二进制部署（推荐，高性能）
-
-追求极致性能？使用二进制文件配合 systemd（Linux）或 Windows 服务，零虚拟化开销！
-
-\*\*Linux（systemd）：
+### Method 1: Binary Deployment (Recommended)
 
 ```bash
-# 从 GitHub Releases 下载对应平台的二进制文件
-# https://github.com/your-username/sfsEdgeStore/releases
+# Download from GitHub Releases
+# https://github.com/liaoran123/sfsEdgeStore/releases
 
-# 直接运行（测试用）
+# Run directly (for testing)
 ./sfsedgestore
 
-# 生产环境推荐使用 systemd 守护（开机自启、崩溃重启）
+# For production, use systemd (Linux) or Windows Service
 ```
 
-**Windows：**
+### Method 2: Docker
 
 ```bash
-# 使用 Windows 服务或 NSSM 等工具配置为系统服务
-```
-
-### 方式 2：Docker 部署（方便，快速体验）
-
-Docker 适合快速测试和部署，\*\*自带守护功能（开机自启、崩溃重启），但会有轻微的性能开销（约 5-10%）。
-
-```bash
-# 拉取镜像
-docker pull sfsedgestore/sfsedgestore:latest
-
-# 运行
 docker run -d \
-  -p 8080:8080 \
+  --name sfsedgestore \
+  -p 8081:8081 \
   -v ./data:/app/data \
   -v ./config.json:/app/config.json \
-  sfsedgestore/sfsedgestore:latest
+  liaoran123/sfsedgestore:latest
 ```
 
-### 方式 3：从源码编译
+### Method 3: From Source
 
 ```bash
-# 克隆仓库
-git clone https://github.com/your-username/sfsEdgeStore.git
+git clone https://github.com/liaoran123/sfsEdgeStore.git
 cd sfsEdgeStore
-
-# 安装依赖
-go mod download
-
-# 编译
-go build -o sfsedgestore
-
-# 运行
+go build -ldflags="-s -w" -o sfsedgestore .
 ./sfsedgestore
 ```
 
-### 验证安装
+### Verify Installation
 
 ```bash
-# 健康检查
+# Health check
 curl http://localhost:8081/health
 
-# 查看指标
+# View metrics
 curl http://localhost:8081/metrics
 ```
 
-### 零摩擦配置
+### Zero Configuration
 
-sfsEdgeStore 采用智能默认值设计，无需复杂配置：
+sfsEdgeStore uses intelligent defaults. Start without any configuration:
 
-```json
-{
-  "mqtt_broker": "", // 默认: tcp://localhost:1883
-  "mqtt_topic": "",  // 默认: edgex/events/core/#
-  "http_port": "",   // 默认: 8081
-  "db_path": ""       // 默认: ./edgex_data
-}
-```
+| Setting | Default |
+|---------|---------|
+| MQTT Broker | `tcp://localhost:1883` |
+| MQTT Topic | `edgex/events/#` |
+| HTTP Port | `8081` |
+| Database Path | `data/sfs.db` |
 
-**启动流程：**
+## 🏗️ Architecture
 
-1. 自动检查 MQTT 连接状态
-2. 自动检查 MQTT 订阅状态
-3. 自动启动定时备份
-4. 提供清晰的启动日志和错误提示
-
-***
-
-## 🏗️ 架构设计
-
-### 轻量级边缘架构
+### Lightweight Edge Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      边缘节点（资源受限）                    │
+│                      Edge Node (Resource-Constrained)       │
 │                                                             │
 │  ┌───────────────────────────────────────────────────────┐ │
 │  │              EdgeX Foundry                              │ │
-│  │  (数据采集、设备管理)                                  │ │
+│  │  (Data Collection, Device Management)                  │ │
 │  └────────────────────┬──────────────────────────────────┘ │
 │                       │ MQTT                              │
 │                       ▼                                   │
 │  ┌───────────────────────────────────────────────────────┐ │
-│  │         sfsEdgeStore (轻量级适配器)                    │ │
+│  │         sfsEdgeStore (Lightweight Adapter)             │ │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────┐  │ │
-│  │  │  MQTT 客户端  │→ │  数据队列    │→ │  sfsDb   │  │ │
+│  │  │  MQTT Client  │→ │  Data Queue  │→ │  sfsDb   │  │ │
 │  │  └──────────────┘  └──────────────┘  └──────────┘  │ │
 │  │  ┌──────────────┐  ┌──────────────┐                  │ │
-│  │  │  HTTP 服务   │  │  监控告警    │                  │ │
+│  │  │  HTTP Server  │  │  Monitoring  │                  │ │
 │  │  └──────────────┘  └──────────────┘                  │ │
 │  └───────────────────────────────────────────────────────┘ │
 │                       │ HTTP API                         │
 └───────────────────────┼─────────────────────────────────────┘
                         ▼
-                  外部查询/监控
+                  External Query/Monitoring
 ```
 
-### 设计原则
+### Design Principles
 
-- **小而美**：只做一件事，做到极致
-- **边缘优先**：所有功能优先考虑边缘场景
-- **零依赖**：除了 sfsDb，不依赖其他重型组件
-- **高可用**：断电恢复、数据重试、本地存储
+- **Small and Beautiful**: Does one thing, does it perfectly
+- **Data Sovereignty**: Data stays local. No cloud dependency.
+- **Edge First**: All features prioritize edge scenarios
+- **Zero Dependencies**: Only depends on sfsDb, no heavy components
+- **High Availability**: Power-failure recovery, data retry, local storage
 
-***
+## 📚 Documentation
 
-## 📡 API 接口
+Complete documentation available in the [docs](./docs/) directory:
 
-### 健康检查
+| Document | Description |
+|----------|-------------|
+| [Quick Start](./docs/quick-start.md) | Get started in 5 minutes |
+| [Installation](./docs/installation.md) | Installation and deployment guide |
+| [API Reference](./docs/api-reference.md) | REST API documentation |
+| [Configuration](./docs/configuration.md) | All configuration options |
+| [Architecture](./docs/architecture.md) | System architecture overview |
+| [Security](./docs/security.md) | Authentication, TLS, encryption |
+| [Troubleshooting](./docs/troubleshooting.md) | Common issues and solutions |
 
-```bash
-GET /health
-```
+📖 [View Documentation Index](./docs/README.md)
 
-响应：
+## 💼 Pricing & Licensing
 
-```json
-{
-  "status": "healthy",
-  "version": "1.0.0",
-  "uptime": "1h23m45s"
-}
-```
+| Edition | Price | Device Limit | Support | Updates |
+|---------|-------|-------------|---------|---------|
+| 🆓 **Community** | Free | 5 devices | Community | ❌ |
+| 💼 **Business** | $299/year | 50 devices | Email (72h) | ✅ |
+| 🚀 **Enterprise** | $799/year | Unlimited | Priority (48h) | ✅ |
 
-### 获取指标
+> Subscription includes: complete documentation, email support, security updates, and new features.
 
-```bash
-GET /metrics
-```
+See [Licensing Guide](./docs/licensing.md) for details.
 
-### 查询数据
+## 🤝 Contributing
 
-```bash
-# 查询设备数据
-GET /query?deviceName=Device001
+Welcome to submit Issues and Pull Requests!
 
-# 按时间范围查询
-GET /query?deviceName=Device001&startTime=2024-01-01T00:00:00Z&endTime=2024-12-31T23:59:59Z
-```
+Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for contribution guidelines.
 
-### 查看告警
+## 🔒 Security
 
-```bash
-GET /alerts
-```
+Please see [SECURITY.md](./SECURITY.md) for security policy and vulnerability reporting.
 
-### 模板管理
-
-```bash
-# 获取模板列表
-GET /api/templates
-
-# 应用模板
-POST /api/templates/apply
-Body: {"industry": "motor"}
-```
-
-### 基线管理
-
-```bash
-# 计算基线
-POST /api/baselines/calculate
-Body: {"deviceName": "temperature-sensor-001", "readingName": "temperature"}
-
-# 获取基线列表
-GET /api/baselines
-```
-
-完整 API 文档请查看 [API 文档](./docs/api.md)
-
-***
-
-### 商业服务
-
-| 服务类型     | 说明               |
-| -------- | ---------------- |
-| **咨询服务** | 架构设计、技术咨询、性能优化建议 |
-| **定制开发** | 功能定制、系统集成、插件开发   |
-
-详细服务说明请查看 [商业服务文档](./docs/pricing/SERVICES.md)。
-
-***
-
-## 📚 文档中心
-
-完整的文档请查看 [文档中心](./docs/README.md)，包含：
-
-- 📖 **使用指南** - 用户手册、管理员指南、FAQ
-- 🔧 **技术文档** - API 参考、架构设计、设计决策
-- 🚀 **最佳实践** - 部署、监控、安全、备份恢复、加密配置
-- 💼 **商业服务** - 技术支持、实施咨询、定制开发
-- 💰 **销售计划** - 销售策略、定价方案、成功指标
-
-***
-
-## 📖 电子书籍
-
-### 培训手册
-
-适合初学者和快速上手的完整培训教程。
-
-📚 [EdgeX Foundry 与 sfsDb 结合：工业物联网边缘计算数据存储实战](./book/README.md)
-
-### 技术深度解析
-
-面向 Go 语言和 EdgeX Foundry 开发人员的深度技术书籍，包含源码级解析、架构设计、性能调优等内容。
-
-📚 [sfsEdgeStore 技术深度解析](./tech-book/00-前言与目录.md)
-
-***
-
-## 🤝 贡献
-
-欢迎提交 Issue 和 Pull Request！
-
-请查看 [CONTRIBUTING.md](./CONTRIBUTING.md) 了解如何参与贡献。
-
-## 🔒 安全
-
-请查看 [SECURITY.md](./SECURITY.md) 了解安全策略和漏洞报告方式。
-
-## 📄 许可证
+## 📄 License
 
 Apache License 2.0
 
-## 🙏 致谢
+## 🙏 Acknowledgments
 
 - [EdgeX Foundry](https://www.edgexfoundry.org/)
 - [sfsDb](https://github.com/liaoran123/sfsDb)
 - [Eclipse Paho MQTT](https://www.eclipse.org/paho/)
-
