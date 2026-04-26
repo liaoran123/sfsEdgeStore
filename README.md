@@ -4,6 +4,8 @@
 
 Lightweight Industrial IoT Edge Data Storage Adapter for EdgeX Foundry.
 
+> This project is built by the **official sfsDb team**, serving as the official edge computing adapter for sfsDb database.
+
 ## Data Sovereignty & Compliance
 
 **sfsEdgeStore** follows a **local-first architecture** that ensures **full data sovereignty**. All data is stored locally on the edge device - no cloud dependency, no data transfer to third parties.
