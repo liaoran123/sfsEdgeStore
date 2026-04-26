@@ -1,22 +1,18 @@
----
-sidebar_position: 4
----
-
 # First Deployment
 
-Deploy sfsEdgeStore in a real production environment.
+Guide for deploying sfsEdgeStore in production.
 
 ## Pre-Deployment Checklist
 
 - [ ] MQTT Broker installed and running
 - [ ] EdgeX Foundry configured to publish events via MQTT
-- [ ] Sufficient disk space (at least 50MB free)
+- [ ] Sufficient disk space (at least 1GB free)
 - [ ] Firewall rules configured (port 8081)
 - [ ] SSL/TLS certificates ready (if using HTTPS)
 
-## Configure for Production
+## Production Configuration
 
-Update `config.json`:
+Create `config.json`:
 
 ```json
 {
@@ -24,7 +20,6 @@ Update `config.json`:
   "mqtt_broker": "tcp://localhost:1883",
   "mqtt_topic": "edgex/events/#",
   "http_port": "8081",
-  "license_type": "enterprise",
   "mqtt_use_tls": true,
   "mqtt_ca_cert": "/etc/ssl/certs/ca.pem",
   "http_use_tls": true,
@@ -32,7 +27,9 @@ Update `config.json`:
   "http_key": "/etc/ssl/private/server.key",
   "enable_resource_monitoring": true,
   "max_memory_mb": 256,
-  "max_cpu_percent": 80
+  "max_cpu_percent": 80,
+  "enable_retention_policy": true,
+  "retention_days": 30
 }
 ```
 
@@ -45,20 +42,16 @@ sudo systemctl status sfsedgestore
 
 ## Verify Data Flow
 
-1. Check MQTT connection:
-   ```bash
-   curl http://localhost:8081/api/status
-   ```
+```bash
+# Check system status
+curl http://localhost:8081/api/status
 
-2. Verify data is being stored:
-   ```bash
-   curl http://localhost:8081/api/readings?limit=10
-   ```
+# Verify data is being stored
+curl "http://localhost:8081/api/readings?limit=10"
 
-3. Check resource usage:
-   ```bash
-   curl http://localhost:8081/api/resources/status
-   ```
+# Check resource usage
+curl http://localhost:8081/api/resources/status
+```
 
 ## Monitor Logs
 
@@ -69,9 +62,3 @@ sudo journalctl -u sfsedgestore -f
 # Check for errors
 sudo journalctl -u sfsedgestore --priority=err --since="1 hour ago"
 ```
-
-## Next Steps
-
-- [Configure Monitoring](../how-to/configure-monitoring.md)
-- [Setup Alerts](../how-to/setup-alerts.md)
-- [Backup Configuration](../how-to/backup-restore.md)

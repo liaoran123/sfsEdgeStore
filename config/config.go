@@ -199,7 +199,7 @@ func (cm *ConfigManager) UpdateConfig(newCfg *Config) error {
 }
 
 // GetScenarioOptions 根据场景获取数据库配置选项
-func (cm *ConfigManager) GetScenarioOptions() *opt.Options {
+func (cm *ConfigManager) GetScenarioOptions() *opt.Options { //sfsDb本身已经有现成的配置，这个是多余的。
 	cfg := cm.GetConfig()
 	switch cfg.DBScenario {
 	case ScenarioEmbedded:
