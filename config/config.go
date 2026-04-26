@@ -348,10 +348,10 @@ func applySmartDefaults(cfg *Config) {
 
 	// DB Path 默认值
 	if cfg.DBPath == "" {
-		if dbPath, err := pathutil.Join("data", "sfs.db"); err == nil {
+		if dbPath, err := pathutil.Join("data"); err == nil {
 			cfg.DBPath = dbPath
 		} else {
-			cfg.DBPath = "data/sfs.db"
+			cfg.DBPath = "data"
 		}
 	}
 

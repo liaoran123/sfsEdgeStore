@@ -80,7 +80,17 @@ Lightweight Industrial IoT Edge Data Storage Adapter for EdgeX Foundry.
 # For production, use systemd (Linux) or Windows Service
 ```
 
-### Method 2: Docker
+### Method 2: Docker Compose (Recommended)
+
+```bash
+git clone https://github.com/liaoran123/sfsEdgeStore.git
+cd sfsEdgeStore
+docker-compose up -d
+```
+
+Starts sfsEdgeStore + MQTT Broker together. Access dashboard at `http://localhost:8081`.
+
+### Method 3: Docker
 
 ```bash
 docker run -d \
@@ -91,7 +101,7 @@ docker run -d \
   liaoran123/sfsedgestore:latest
 ```
 
-### Method 3: From Source
+### Method 4: From Source
 
 ```bash
 git clone https://github.com/liaoran123/sfsEdgeStore.git
@@ -106,8 +116,8 @@ go build -ldflags="-s -w" -o sfsedgestore .
 # Health check
 curl http://localhost:8081/health
 
-# View metrics
-curl http://localhost:8081/metrics
+# Open Dashboard in browser
+# http://localhost:8081
 ```
 
 ### Zero Configuration
@@ -119,7 +129,36 @@ sfsEdgeStore uses intelligent defaults. Start without any configuration:
 | MQTT Broker | `tcp://localhost:1883` |
 | MQTT Topic | `edgex/events/#` |
 | HTTP Port | `8081` |
-| Database Path | `data/sfs.db` |
+| Database Path | `data` |
+
+### Configuration Example
+
+Create `config.json` to customize settings:
+
+```json
+{
+  "mqtt_broker": "tcp://localhost:1883",
+  "mqtt_topic": "edgex/events/#",
+  "http_port": "8081",
+  "db_path": "data",
+  "db_scenario": "edge",
+  "enable_resource_monitoring": true,
+  "max_memory_mb": 256,
+  "enable_retention_policy": true,
+  "retention_days": 30
+}
+```
+
+| Key | Description |
+|-----|-------------|
+| `mqtt_broker` | MQTT server address (e.g., Mosquitto) |
+| `mqtt_topic` | EdgeX event topic pattern |
+| `db_path` | Local database storage path |
+| `db_scenario` | Performance profile: `embedded`, `iot`, `edge`, `game`, `default` |
+| `enable_retention_policy` | Auto-cleanup old data |
+| `retention_days` | Days to keep data before cleanup |
+
+> MQTT Topic is managed through the **Topic Subscription** page (`http://localhost:8081/mqtt-subscription`) in the web dashboard.
 
 ## 🏗️ Architecture
 

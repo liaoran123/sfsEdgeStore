@@ -80,7 +80,17 @@
 # 生产环境使用 systemd（Linux）或 Windows 服务
 ```
 
-### 方式二：Docker
+### 方式二：Docker Compose（推荐）
+
+```bash
+git clone https://github.com/liaoran123/sfsEdgeStore.git
+cd sfsEdgeStore
+docker-compose up -d
+```
+
+同时启动 sfsEdgeStore + MQTT Broker。访问仪表板 `http://localhost:8081`。
+
+### 方式三：Docker
 
 ```bash
 docker run -d \
@@ -91,7 +101,7 @@ docker run -d \
   liaoran123/sfsedgestore:latest
 ```
 
-### 方式三：源码编译
+### 方式四：源码编译
 
 ```bash
 git clone https://github.com/liaoran123/sfsEdgeStore.git
@@ -106,8 +116,8 @@ go build -ldflags="-s -w" -o sfsedgestore .
 # 健康检查
 curl http://localhost:8081/health
 
-# 查看指标
-curl http://localhost:8081/metrics
+# 在浏览器中打开仪表板
+# http://localhost:8081
 ```
 
 ### 零配置启动
@@ -119,7 +129,36 @@ sfsEdgeStore 使用智能默认值，无需配置即可启动：
 | MQTT Broker | `tcp://localhost:1883` |
 | MQTT 主题 | `edgex/events/#` |
 | HTTP 端口 | `8081` |
-| 数据库路径 | `data/sfs.db` |
+| 数据库路径 | `data` |
+
+### 配置示例
+
+创建 `config.json` 自定义配置：
+
+```json
+{
+  "mqtt_broker": "tcp://localhost:1883",
+  "mqtt_topic": "edgex/events/#",
+  "http_port": "8081",
+  "db_path": "data",
+  "db_scenario": "edge",
+  "enable_resource_monitoring": true,
+  "max_memory_mb": 256,
+  "enable_retention_policy": true,
+  "retention_days": 30
+}
+```
+
+| 配置项 | 说明 |
+|--------|------|
+| `mqtt_broker` | MQTT 服务器地址（如 Mosquitto） |
+| `mqtt_topic` | EdgeX 事件主题模式 |
+| `db_path` | 本地数据库存储路径 |
+| `db_scenario` | 性能配置：`embedded`、`iot`、`edge`、`game`、`default` |
+| `enable_retention_policy` | 自动清理过期数据 |
+| `retention_days` | 数据保留天数 |
+
+> MQTT 主题通过 Web 仪表板的 **主题订阅** 页面（`http://localhost:8081/mqtt-subscription`）管理。
 
 ## 🏗️ 架构设计
 

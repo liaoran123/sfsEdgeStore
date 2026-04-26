@@ -75,7 +75,7 @@ Minimal configuration for a production deployment:
 
 | Key | Type | Environment Variable | Default | Description |
 |-----|------|---------------------|---------|-------------|
-| `db_path` | string | `EDGEX_DB_PATH` | `data/sfs.db` | Database storage path |
+| `db_path` | string | `EDGEX_DB_PATH` | `data` | Database storage path |
 | `mqtt_broker` | string | `EDGEX_MQTT_BROKER` | `tcp://localhost:1883` | MQTT broker URL |
 | `mqtt_topic` | string | `EDGEX_MQTT_TOPIC` | `edgex/events/#` | MQTT subscription topic |
 | `client_id` | string | `EDGEX_CLIENT_ID` | `sfsdb-edgex-adapter` | MQTT client ID |
