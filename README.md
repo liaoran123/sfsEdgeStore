@@ -17,12 +17,30 @@ Lightweight Industrial IoT Edge Data Storage Adapter for EdgeX Foundry.
 
 ## ⚡ Performance
 
+### Production Environment (100 devices, 1-60s interval)
+
 | Metric | Value | Description |
 |--------|-------|-------------|
-| **Memory** | ~14 MB | Ultra-lightweight, suitable for resource-constrained devices |
-| **CPU** | <5% | Minimal overhead during normal operation |
+| **Memory** | ~30 MB | Stable under normal operation |
+| **CPU** | 1.7% | Minimal overhead, ultra-low power |
+| **Message Rate** | ~30 msg/sec | Realistic industrial sensor data |
 | **Startup** | <0.2s | Fast startup, ready in milliseconds |
-| **Database** | 0.25 MB / 18K records | Efficient storage with LevelDB |
+
+### Stress Test (500 devices, 0.05-0.2s interval)
+
+| Metric | Value | Description |
+|--------|-------|-------------|
+| **Memory** | ~44 MB | Under heavy load (4000 msg/sec) |
+| **CPU** | 6.8% | Handles extreme load gracefully |
+| **Message Rate** | ~4000 msg/sec | 133x normal production load |
+| **Zero Data Loss** | 100% | All messages stored successfully |
+
+### Resource Comparison
+
+| Scenario | Devices | Interval | Rate | CPU | Memory |
+|----------|---------|----------|------|-----|--------|
+| Production | 100 | 1-60s | ~30 msg/sec | 1.7% | ~30 MB |
+| Stress Test | 500 | 0.05-0.2s | ~4000 msg/sec | 6.8% | ~44 MB |
 
 ![Dashboard](./img/sfsEdgeStoreEn.png)
 

@@ -297,94 +297,89 @@ function connectWebSocket() {
 }
 
 function handleWebSocketMessage(data) {
-    try {
-        switch (data.type) {
-            case 'device_data':
-                updateRealtimeData(data.data);
-                break;
-            case 'alerts':
-                updateDeviceAlerts(data.data);
-                updateUnhealthyDevices([data.data]);
-                break;
-            case 'device_status':
-                updateDeviceStatus(data.data);
-                break;
-        }
-    } catch (e) {
-        // Silent fail for WebSocket message errors
+    switch (data.type) {
+        case 'device_data':
+            updateRealtimeData(data.data);
+            break;
+        case 'alerts':
+            updateDeviceAlerts(data.data);
+            updateUnhealthyDevices([data.data]);
+            break;
+        case 'device_status':
+            updateDeviceStatus(data.data);
+            break;
     }
 }
 
 function updateRealtimeData(deviceData) {
-    try {
-        if (!deviceData) return;
-        
-        const records = deviceData.records || [];
-        records.forEach(record => {
-            realtimeData.unshift(record);
-            if (realtimeData.length > 21) {
-                realtimeData.pop();
-            }
-        });
-
-        updateTable();
-        updateWaveform();
-        updateDeviceAlerts(deviceData.alerts);
-    } catch (e) {
-        // Silent fail for UI update errors
-    }
+	const deviceName = deviceData.deviceName;
+	const records = deviceData.records;
+	
+	// Add new data to realtime data list
+	records.forEach(record => {
+		realtimeData.unshift(record);
+		if (realtimeData.length > 21) {
+			realtimeData.pop();
+		}
+	});
+	
+	// Update table
+	updateTable();
+	// Update waveform
+	updateWaveform();
+	
+	// Update data count
+	const dataCountElement = document.getElementById('dataCount');
+	if (dataCountElement) {
+		dataCountElement.textContent = realtimeData.length + ' records';
+	}
 }
 
 function updateDeviceAlerts(alertData) {
-    try {
-        const deviceName = alertData.deviceName;
-        const alerts = alertData.alerts;
-        fetchDeviceAlerts();
-    } catch (e) {
-        // Silent fail
-    }
+    const deviceName = alertData.deviceName;
+    const alerts = alertData.alerts;
+    
+    // Directly refresh alert list, no longer using alertList cache
+    fetchDeviceAlerts();
 }
 
 function updateUnhealthyDevices(alertGroups) {
-    try {
-        const container = document.getElementById('unhealthyDevices');
-        if (!container) return;
-        
-        const unhealthyDeviceMap = new Map();
-        alertGroups.forEach(g => {
-            if (g.alerts && g.alerts.length > 0) {
-                g.alerts.forEach(alert => {
-                    if (!unhealthyDeviceMap.has(g.deviceName)) {
-                        unhealthyDeviceMap.set(g.deviceName, []);
-                    }
-                    unhealthyDeviceMap.get(g.deviceName).push(alert.message || 'Alert');
-                });
-            }
-        });
-        
-        if (unhealthyDeviceMap.size === 0) {
-            container.innerHTML = '<div class="text-white-50 text-center">No unhealthy devices</div>';
-            return;
-        }
+    const container = document.getElementById('unhealthyDevices');
+    if (!container) return;
     
-        let html = '<div class="row g-2">';
-        unhealthyDeviceMap.forEach((alerts, name) => {
-            const badgeClass = 'bg-warning';
-            html += `<div class="col-12 col-sm-6 col-md-4">
-                <div class="p-2 rounded" style="background: rgba(255,107,107,0.15); border: 1px solid rgba(255,107,107,0.3);">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span class="text-danger fw-bold">${name}</span>
-                        <span class="badge ${badgeClass} text-dark">${alerts.length}</span>
-                    </div>
-                    <div class="text-white-50 small mt-1">${alerts.slice(0, 2).join(', ')}${alerts.length > 2 ? '...' : ''}</div>
-                </div>
-            </div>`;
-        });
-        html += '</div>';
-        container.innerHTML = html;
-    } catch (e) {
-        // Silent fail
+    // Collect devices with alerts
+    const unhealthyDeviceMap = new Map();
+    alertGroups.forEach(g => {
+        if (g.alerts && g.alerts.length > 0) {
+            g.alerts.forEach(alert => {
+                if (!unhealthyDeviceMap.has(g.deviceName)) {
+                    unhealthyDeviceMap.set(g.deviceName, []);
+                }
+                unhealthyDeviceMap.get(g.deviceName).push(alert.message || 'Alert');
+            });
+        }
+    });
+    
+    if (unhealthyDeviceMap.size === 0) {
+        container.innerHTML = '<div class="text-white-50 text-center">No unhealthy devices</div>';
+        return;
     }
+    
+    let html = '<div class="row g-2">';
+    unhealthyDeviceMap.forEach((alerts, name) => {
+        const badgeClass = 'bg-warning';
+        html += `<div class="col-12 col-sm-6 col-md-4">
+            <div class="p-2 rounded" style="background: rgba(255,107,107,0.15); border: 1px solid rgba(255,107,107,0.3);">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="text-danger fw-bold">${name}</span>
+                    <span class="badge ${badgeClass} text-dark">${alerts.length}</span>
+                </div>
+                <div class="text-white-50 small mt-1">${alerts.slice(0, 2).join(', ')}${alerts.length > 2 ? '...' : ''}</div>
+            </div>
+        </div>`;
+    });
+    html += '</div>';
+    container.innerHTML = html;
 }
 
 function formatNumber(num) {
@@ -486,7 +481,7 @@ async function fetchData() {
             connectionDotElement.className = 'status-dot online';
         }
     } catch (e) {
-        // Silent fail for fetch data
+        console.error('Failed to fetch data:', e);
         const connectionStatusElement = document.getElementById('connectionStatus');
         const connectionDotElement = document.getElementById('connectionDot');
         if (connectionStatusElement) {
@@ -562,7 +557,7 @@ async function fetchMetrics() {
             updateMetricBar('memoryBar', 'memoryValue', memUsage.toFixed(1), ' MB', 'memory');
         }
     } catch (e) {
-        // Silent fail
+        console.error('Failed to fetch metrics:', e);
     }
 
     const lastUpdateElement = document.getElementById('lastUpdate');
@@ -630,7 +625,7 @@ async function fetchDeviceStatus() {
         if (onlineCountElement) onlineCountElement.textContent = onlineDevices;
         if (totalCountElement) totalCountElement.textContent = totalDevices;
     } catch (e) {
-        // Silent fail
+        console.error('Failed to fetch device status:', e);
     }
 }
 
@@ -690,7 +685,7 @@ async function fetchDeviceAlerts() {
         // Update unhealthy devices list
         updateUnhealthyDevices(groups);
     } catch (e) {
-        // Silent fail
+        console.error('Failed to fetch alerts:', e);
         const alertsContainer = document.getElementById('deviceAlerts');
         const alertCountElement = document.getElementById('deviceAlertCount');
         if (alertsContainer) {
