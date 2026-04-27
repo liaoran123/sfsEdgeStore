@@ -215,13 +215,16 @@ Complete documentation available in the [docs](./docs/) directory:
 
 ## 💼 Pricing & Licensing
 
-| Edition | Price | Device Limit | Support | Updates |
-|---------|-------|-------------|---------|---------|
-| 🆓 **Community** | Free | 5 devices | Community | ❌ |
-| 💼 **Business** | $299/year | 50 devices | Email (72h) | ✅ |
-| 🚀 **Enterprise** | $799/year | Unlimited | Priority (48h) | ✅ |
+| Edition | Price | Support | Updates |
+|---------|-------|---------|---------|
+| 🆓 **Community** | Free | GitHub Issues + Community | ✅ |
+| 💼 **Business** | $399/year | Priority Email (best-effort), contact [liao010203kk@gmail.com](mailto:liao010203kk@gmail.com) | ✅ |
 
-> Subscription includes: complete documentation, email support, security updates, and new features.
+> Need custom development for your enterprise? [Contact us](mailto:liao010203kk@gmail.com) for a tailored solution.
+
+> All support is best-effort and does not constitute a Service Level Agreement (SLA).
+
+> Subscription includes: priority support, security updates, and new features.
 
 See [Licensing Guide](./docs/licensing.md) for details.
 

@@ -39,9 +39,7 @@ build/
 # Environment variables
 .env
 
-# Commercial/Closed-source packages
-web/
-agent/
+
 
 # Word documents
 word/
