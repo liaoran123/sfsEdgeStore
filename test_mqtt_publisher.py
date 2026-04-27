@@ -8,6 +8,7 @@ import json
 import time
 import random
 import uuid
+import sys
 from datetime import datetime, timezone
 
 try:
@@ -62,10 +63,11 @@ def generate_reading(device, anomaly=None):
     }
 
 def generate_edgex_event(device, anomaly=None):
-    """生成 EdgeX V2 格式的事件"""
+    """生成 EdgeX V2 格式的事件（包装为 MessageEnvelope）"""
     reading = generate_reading(device, anomaly)
     
-    event = {
+    # 内部事件数据
+    event_data = {
         "apiVersion": "v2",
         "id": str(uuid.uuid4()),
         "deviceName": device["name"],
@@ -90,7 +92,17 @@ def generate_edgex_event(device, anomaly=None):
         }
     }
     
-    return event
+    # 包装为 MessageEnvelope 格式
+    envelope = {
+        "apiVersion": "v2",
+        "correlationId": str(uuid.uuid4()),
+        "messageType": "event",
+        "origin": int(time.time() * 1000),
+        "payload": event_data,
+        "contentType": "application/json"
+    }
+    
+    return envelope
 
 def on_connect(client, userdata, flags, rc):
     """连接回调"""
@@ -105,6 +117,12 @@ def on_publish(client, userdata, mid):
 
 def main():
     """主函数"""
+    # Windows 设置控制台编码
+    if sys.platform == 'win32':
+        import io
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    
     print("=" * 60)
     print("  sfsEdgeStore MQTT 模拟数据发布器")
     print("=" * 60)
@@ -155,9 +173,9 @@ def main():
             
             if anomaly:
                 anomaly_count += 1
-                print(f"  ⚠️  Anomaly [{anomaly}]: {device['name']} = {event['readings'][0]['value']} {device['unit']}")
+                print(f"  [Anomaly] {device['name']} = {event['payload']['readings'][0]['value']} {device['unit']}")
             else:
-                print(f"  📊 Normal: {device['name']} = {event['readings'][0]['value']} {device['unit']}")
+                print(f"  [Normal] {device['name']} = {event['payload']['readings'][0]['value']} {device['unit']}")
             
             message_count += 1
             

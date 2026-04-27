@@ -132,7 +132,6 @@ func (u *MQTTUploader) Upload(data []byte) error {
 }
 
 /*
-- License验证 ：只有 LicenseType == "enterprise" 时才会启用
 - 配置开关 ：需要设置 EnableDataSync: true
-- 免费版限制 ：开源版用户无法使用此功能
+- 企业版功能 ：仅商业版用户可使用
 */

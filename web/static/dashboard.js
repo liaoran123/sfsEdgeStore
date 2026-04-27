@@ -259,7 +259,6 @@ document.addEventListener('DOMContentLoaded', function() {
     connectWebSocket();
     fetchData();
     fetchMetrics();
-    fetchLicenseInfo();
     fetchDeviceStatus();
     fetchDeviceAlerts();
     // Stagger intervals to reduce CPU spikes
@@ -627,25 +626,6 @@ async function fetchDeviceStatus() {
         if (totalCountElement) totalCountElement.textContent = totalDevices;
     } catch (e) {
         console.error('Failed to fetch device status:', e);
-    }
-}
-
-async function fetchLicenseInfo() {
-    try {
-        const res = await fetch('/api/license');
-        const data = await res.json();
-
-        const versionElement = document.getElementById('licenseVersion');
-        if (versionElement) {
-            versionElement.textContent = data.version || 'Unknown';
-        }
-
-        const devicesElement = document.getElementById('licenseDevices');
-        if (devicesElement) {
-            devicesElement.textContent = (data.deviceLimit || 0) + ' devices';
-        }
-    } catch (e) {
-        console.error('Failed to fetch license info:', e);
     }
 }
 

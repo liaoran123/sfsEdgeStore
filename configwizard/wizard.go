@@ -341,12 +341,6 @@ func (w *Wizard) validateConfig() error {
 		log.Println("⚠ Database scenario not configured, using default: edge")
 	}
 
-	// 验证许可证类型
-	if w.config.LicenseType == "" {
-		w.config.LicenseType = "community"
-		log.Println("⚠ License type not configured, using default: community")
-	}
-
 	// 验证资源监控设置
 	if !w.config.EnableResourceMonitoring {
 		// 默认启用资源监控

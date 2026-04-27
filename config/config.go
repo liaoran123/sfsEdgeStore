@@ -1,8 +1,6 @@
 package config
 
 import (
-	"encoding/json"
-	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -97,9 +95,6 @@ type Config struct {
 	EnableSimulator      bool `json:"enable_simulator" env:"EDGEX_ENABLE_SIMULATOR"`
 	SimulatorIntervalMin int  `json:"simulator_interval_min" env:"EDGEX_SIMULATOR_INTERVAL_MIN"`
 	SimulatorIntervalMax int  `json:"simulator_interval_max" env:"EDGEX_SIMULATOR_INTERVAL_MAX"`
-	// 许可证配置
-	LicenseType string `json:"license_type" env:"EDGEX_LICENSE_TYPE"` // "community" | "business" | "enterprise"
-	LicenseKey  string `json:"license_key" env:"EDGEX_LICENSE_KEY"`   // 许可证密钥
 	// 行业模板配置
 	IndustryTemplate string `json:"industry_template" env:"EDGEX_INDUSTRY_TEMPLATE"` // 行业模板
 	// 设备配置
@@ -115,14 +110,13 @@ type Config struct {
 	CustomTopics []string `json:"custom_topics"` // 自定义MQTT订阅主题
 }
 
-// EnterpriseFeatures 企业版功能开关   授权方式变更，这个已经不需要。
+// EnterpriseFeatures 功能开关
 type EnterpriseFeatures struct {
 	EnableCloudSync         bool `json:"enable_cloud_sync"`         // 云端数据同步
 	EnableRemoteConfig      bool `json:"enable_remote_config"`      // 远程配置管理
 	EnableMultiTenant       bool `json:"enable_multi_tenant"`       // 多租户支持
 	EnableAdvancedAnalytics bool `json:"enable_advanced_analytics"` // 高级数据分析
 	EnableBigScreenMode     bool `json:"enable_big_screen_mode"`    // 本地大屏模式（解锁多图表排版）
-	MaxDevices              int  `json:"max_devices"`               // 最大设备数限制（0表示无限制）
 }
 
 // ThresholdConfig 阈值配置
@@ -298,15 +292,12 @@ func Load() (*Config, error) {
 		EnableSimulator:      false,
 		SimulatorIntervalMin: 5,
 		SimulatorIntervalMax: 10,
-		// 许可证配置默认值
-		LicenseType: "community", // 默认社区版
 		EnterpriseFeatures: EnterpriseFeatures{
-			EnableCloudSync:         false, // 社区版不提供云端同步
+			EnableCloudSync:         false,
 			EnableRemoteConfig:      false,
 			EnableMultiTenant:       false,
 			EnableAdvancedAnalytics: false,
 			EnableBigScreenMode:     false,
-			MaxDevices:              5, // 社区版限制5个设备
 		},
 	}
 
@@ -382,241 +373,4 @@ func getEnv(key, defaultValue string) string {
 	return defaultValue
 }
 
-// ===========================================
-// 许可证系统
-// ===========================================
 
-// License 许可证信息
-type License struct {
-	LicenseType string `json:"license_type"` // "community" | "business" | "enterprise"
-	IssuedDate  string `json:"issued_date"`  // 发证日期，ISO8601格式
-	ExpiryDate  string `json:"expiry_date"`  // 到期日期，ISO8601格式
-	MaxDevices  int    `json:"max_devices"`  // 最大设备数
-	LicenseKey  string `json:"license_key"`  // 许可证密钥
-}
-
-// 宽限期（天） - 到期后 30 天内依然有温馨提示
-const GracePeriodDays = 30
-
-// 许可证文件路径
-const LicenseFilePath = "license.json"
-
-// GetLicenseFilePath 获取许可证文件绝对路径
-func GetLicenseFilePath() (string, error) {
-	return pathutil.Join(LicenseFilePath)
-}
-
-// LoadLicense 加载许可证
-func LoadLicense() (*License, error) {
-	licensePath, err := GetLicenseFilePath()
-	if err != nil {
-		licensePath = LicenseFilePath
-	}
-
-	if _, err := os.Stat(licensePath); err == nil {
-		data, err := os.ReadFile(licensePath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read license file: %w", err)
-		}
-		var lic License
-		if err := json.Unmarshal(data, &lic); err == nil {
-			fillLicenseDefaults(&lic)
-			return &lic, nil
-		}
-	}
-
-	return &License{
-		LicenseType: "community",
-		IssuedDate:  time.Now().Format(time.RFC3339),
-		ExpiryDate:  "",
-		MaxDevices:  5,
-		LicenseKey:  "community-free",
-	}, nil
-}
-
-// SaveLicense 保存许可证
-func SaveLicense(lic *License) error {
-	licensePath, err := GetLicenseFilePath()
-	if err != nil {
-		licensePath = LicenseFilePath
-	}
-
-	data, err := json.MarshalIndent(lic, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal license: %w", err)
-	}
-	if err := os.WriteFile(licensePath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write license file: %w", err)
-	}
-	return nil
-}
-
-// 补全默认值
-func fillLicenseDefaults(lic *License) {
-	switch lic.LicenseType {
-	case "business":
-		if lic.MaxDevices == 0 {
-			lic.MaxDevices = 50
-		}
-	case "enterprise":
-		if lic.MaxDevices == 0 {
-			lic.MaxDevices = 0 // 0表示无限制
-		}
-	default: // community
-		if lic.MaxDevices == 0 {
-			lic.MaxDevices = 5
-		}
-	}
-}
-
-// GetMaxDevices 获取最大设备数
-func (l *License) GetMaxDevices() int {
-	return l.MaxDevices
-}
-
-// LicenseStatus 许可证状态
-type LicenseStatus int
-
-const (
-	// LicenseStatusActive 有效期内
-	LicenseStatusActive LicenseStatus = iota
-	// LicenseStatusGracePeriod 宽限期（过期30天内）
-	LicenseStatusGracePeriod
-	// LicenseStatusExpired 已过期
-	LicenseStatusExpired
-	// LicenseStatusCommunity 社区版（永远有效）
-	LicenseStatusCommunity
-)
-
-// GetStatus 获取许可证状态
-func (l *License) GetStatus() LicenseStatus {
-	if l.LicenseType == "community" {
-		return LicenseStatusCommunity
-	}
-
-	if l.ExpiryDate == "" {
-		return LicenseStatusActive
-	}
-
-	expiryTime, err := time.Parse(time.RFC3339, l.ExpiryDate)
-	if err != nil {
-		return LicenseStatusActive
-	}
-
-	now := time.Now()
-
-	if now.Before(expiryTime) {
-		return LicenseStatusActive
-	}
-
-	// 检查宽限期
-	gracePeriod := expiryTime.AddDate(0, 0, GracePeriodDays)
-	if now.Before(gracePeriod) {
-		return LicenseStatusGracePeriod
-	}
-
-	return LicenseStatusExpired
-}
-
-// GetStatusText 获取状态文本
-func (l *License) GetStatusText() string {
-	switch l.GetStatus() {
-	case LicenseStatusActive:
-		return "有效期内"
-	case LicenseStatusGracePeriod:
-		return "宽限期内"
-	case LicenseStatusExpired:
-		return "已过期"
-	case LicenseStatusCommunity:
-		return "社区版"
-	default:
-		return "未知状态"
-	}
-}
-
-// GetRemainingDays 获取剩余天数（仅对有效期内或宽限期内有效）
-func (l *License) GetRemainingDays() int {
-	if l.GetStatus() == LicenseStatusCommunity {
-		return 99999 // 社区版永久有效
-	}
-
-	if l.ExpiryDate == "" {
-		return 99999
-	}
-
-	expiryTime, err := time.Parse(time.RFC3339, l.ExpiryDate)
-	if err != nil {
-		return 0
-	}
-
-	now := time.Now()
-	diff := expiryTime.Sub(now)
-	if diff < 0 {
-		// 检查宽限期
-		gracePeriod := expiryTime.AddDate(0, 0, GracePeriodDays)
-		if now.Before(gracePeriod) {
-			diff = gracePeriod.Sub(now)
-		} else {
-			return 0
-		}
-	}
-	return int(diff.Hours() / 24)
-}
-
-// ShouldShowRenewalNotice 是否显示续费提示
-func (l *License) ShouldShowRenewalNotice() bool {
-	status := l.GetStatus()
-	return status == LicenseStatusGracePeriod || status == LicenseStatusExpired
-}
-
-// PrintLicenseInfo 打印许可证信息
-func PrintLicenseInfo(l *License) {
-	fmt.Println()
-	fmt.Println("========================================")
-	fmt.Println("         许可证信息")
-	fmt.Println("========================================")
-
-	statusText := l.GetStatusText()
-
-	if l.LicenseType == "community" {
-		fmt.Printf("版本: 社区版 (免费)\n")
-		fmt.Printf("设备限制: %d 台\n", l.MaxDevices)
-	} else {
-		versionName := map[string]string{
-			"business":   "商业版",
-			"enterprise": "企业版",
-		}[l.LicenseType]
-		fmt.Printf("版本: %s\n", versionName)
-		fmt.Printf("设备限制: ")
-		if l.MaxDevices == 0 {
-			fmt.Printf("无限制\n")
-		} else {
-			fmt.Printf("%d 台\n", l.MaxDevices)
-		}
-		fmt.Printf("状态: %s\n", statusText)
-
-		if l.ExpiryDate != "" {
-			fmt.Printf("到期日期: %s\n", l.ExpiryDate[:10])
-
-			if l.GetStatus() != LicenseStatusExpired {
-				remainingDays := l.GetRemainingDays()
-				if remainingDays == 99999 {
-					fmt.Printf("剩余天数: 永久\n")
-				} else {
-					fmt.Printf("剩余天数: %d 天\n", remainingDays)
-				}
-			}
-		}
-	}
-
-	if l.ShouldShowRenewalNotice() {
-		fmt.Println()
-		fmt.Println("💡 温馨提示:")
-		fmt.Println("   您的更新服务已过期，")
-		fmt.Println("   但已购买的功能依然可以永久使用！")
-		fmt.Println("   如需更新或技术支持，建议续费。")
-	}
-
-	fmt.Println("========================================")
-	fmt.Println()
-}

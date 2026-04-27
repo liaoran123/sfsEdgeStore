@@ -340,25 +340,17 @@ func (c *Client) compressMessages(messages []map[string]any) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// isDeviceAllowed 检查设备是否被允许发送数据
+// 已移除设备数量限制，改为基于诚信的授权模式
+// 社区版用户请遵守5台设备的授权限制，商业版用户无限制
 func (c *Client) isDeviceAllowed(deviceName string) bool {
-	if c.config.LicenseType == "enterprise" {
-		return true
+	// 所有设备都允许（无代码限制）
+	c.muDevices.Lock()
+	if !c.registeredDevices[deviceName] {
+		c.registeredDevices[deviceName] = true
+		log.Printf("New device registered: %s (total: %d)", deviceName, len(c.registeredDevices))
 	}
-	if c.registeredDevices[deviceName] {
-		return true
-	}
-	maxDevices := 5
-	if c.config.LicenseType == "business" {
-		maxDevices = 50
-	}
-	if c.config.EnterpriseFeatures.MaxDevices >= 0 {
-		maxDevices = c.config.EnterpriseFeatures.MaxDevices
-	}
-	if maxDevices > 0 && len(c.registeredDevices) >= maxDevices {
-		return false
-	}
-	c.registeredDevices[deviceName] = true
-	log.Printf("New device registered: %s (total: %d/%d, license: %s)", deviceName, len(c.registeredDevices), maxDevices, c.config.LicenseType)
+	c.muDevices.Unlock()
 	return true
 }
 

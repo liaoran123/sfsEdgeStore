@@ -55,7 +55,7 @@ func main() {
 	}
 
 	// 2. 初始化配置
-	appConfig, appLicense, err := initConfig(args)
+	appConfig, err := initConfig(args)
 	if err != nil {
 		log.Fatalf("配置初始化失败: %v", err)
 	}
@@ -67,13 +67,13 @@ func main() {
 	}
 
 	// 4. 启动服务
-	startServices(components, appConfig, appLicense)
+	startServices(components, appConfig)
 
 	// 5. 等待中断信号并优雅关闭
 	waitForShutdown(components)
 }
 
-func initConfig(args *cli.Args) (*config.Config, *config.License, error) {
+func initConfig(args *cli.Args) (*config.Config, error) {
 	// 加载配置
 	appConfig, err := config.Load()
 	if err != nil {
@@ -86,20 +86,6 @@ func initConfig(args *cli.Args) (*config.Config, *config.License, error) {
 		log.Printf("配置向导失败: %v", err)
 	}
 
-	// 加载许可证
-	appLicense, err := config.LoadLicense()
-	if err != nil {
-		log.Printf("加载许可证失败: %v，使用默认社区版", err)
-		appLicense = &config.License{
-			LicenseType: "community",
-			MaxDevices:  5,
-		}
-	}
-
-	// 更新配置中的许可证信息
-	appConfig.LicenseType = appLicense.LicenseType
-	appConfig.EnterpriseFeatures.MaxDevices = appLicense.GetMaxDevices()
-
 	// 命令行参数覆盖配置
 	if args.MQTTBroker != "" {
 		appConfig.MQTTBroker = args.MQTTBroker
@@ -111,7 +97,7 @@ func initConfig(args *cli.Args) (*config.Config, *config.License, error) {
 		appConfig.HTTPPort = args.HTTPPort
 	}
 
-	return appConfig, appLicense, nil
+	return appConfig, nil
 }
 
 func initComponents(appConfig *config.Config) (*Components, error) {
@@ -178,9 +164,9 @@ func initComponents(appConfig *config.Config) (*Components, error) {
 	// 初始化HTTP服务器
 	serverInstance := server.NewServer(database.Table, appConfig, monitorInstance, retentionManager, alertNotifier, resourceMonitor)
 
-	// 初始化同步管理器（企业版功能）
+	// 初始化同步管理器
 	var syncManager *sync.SyncManager
-	if appConfig.LicenseType == "enterprise" && appConfig.EnableDataSync {
+	if appConfig.EnableDataSync {
 		syncManager = sync.NewSyncManager(appConfig, monitorInstance)
 		if err := syncManager.Start(); err != nil {
 			log.Printf("同步管理器启动失败: %v", err)
@@ -216,18 +202,15 @@ func initComponents(appConfig *config.Config) (*Components, error) {
 	}, nil
 }
 
-func startServices(c *Components, appConfig *config.Config, appLicense *config.License) {
+func startServices(c *Components, appConfig *config.Config) {
 	// 打印欢迎信息
 	cli.PrintWelcome()
-
-	// 显示许可证信息
-	config.PrintLicenseInfo(appLicense)
 
 	// 显示当前配置摘要
 	log.Printf("MQTT Broker: %s", appConfig.MQTTBroker)
 	log.Printf("MQTT Topic: %s", appConfig.MQTTTopic)
 	log.Printf("HTTP端口: %s", appConfig.HTTPPort)
-	log.Println("sfsDb EdgeX adapter started successfully")
+	log.Println("sfsEdgeStore started successfully")
 
 	// 启动队列处理
 	c.DataQueue.ProcessQueue(func(data interface{}) error {

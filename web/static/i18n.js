@@ -109,16 +109,6 @@ const i18n = {
         'no.custom.topics': '暂无自定义主题，点击上方按钮添加',
         'loading': '加载中...',
 
-        // 许可证信息
-        'license.info': '许可证信息',
-        'license.version': '版本',
-        'license.community': '社区版 (免费)',
-        'license.business': '商业版',
-        'license.enterprise': '企业版',
-        'license.device.limit': '设备限制',
-        'license.devices': '台',
-        'license.used.devices': '已用设备',
-
         // 通用状态
         'success': '成功',
         'error': '错误',
@@ -169,8 +159,6 @@ const i18n = {
         'http.port': 'HTTP端口',
         'edgex.version': 'EdgeX版本',
         'memory.usage': '内存占用',
-        'device.limit': '设备限制',
-        'community.free': '社区版 (免费)',
 
         // 配置提示
         'config.hint': '配置提示',
@@ -368,16 +356,6 @@ const i18n = {
         'no.custom.topics': 'No custom topics, click the button above to add',
         'loading': 'Loading...',
 
-        // 许可证信息
-        'license.info': 'License Information',
-        'license.version': 'Version',
-        'license.community': 'Community (Free)',
-        'license.business': 'Business',
-        'license.enterprise': 'Enterprise',
-        'license.device.limit': 'Device Limit',
-        'license.devices': 'devices',
-        'license.used.devices': 'Used Devices',
-
         // 通用状态
         'success': 'Success',
         'error': 'Error',
@@ -428,8 +406,6 @@ const i18n = {
         'http.port': 'HTTP Port',
         'edgex.version': 'EdgeX Version',
         'memory.usage': 'Memory Usage',
-        'device.limit': 'Device Limit',
-        'community.free': 'Community (Free)',
 
         // 配置提示
         'config.hint': 'Configuration Hint',

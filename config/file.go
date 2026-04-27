@@ -11,11 +11,10 @@ import (
 
 // SimpleConfig 简化配置，只包含最核心的项
 type SimpleConfig struct {
-	MQTTBroker       string `json:"mqtt_broker"`
-	MQTTTopic        string `json:"mqtt_topic"`
-	HTTPPort         string `json:"http_port"`
-	LicenseType      string `json:"license_type"`
-	DBUseEncryption  bool   `json:"db_use_encryption"`
+	MQTTBroker      string `json:"mqtt_broker"`
+	MQTTTopic       string `json:"mqtt_topic"`
+	HTTPPort        string `json:"http_port"`
+	DBUseEncryption bool   `json:"db_use_encryption"`
 }
 
 // loadFromFile 从配置文件加载配置
@@ -63,9 +62,6 @@ func mergeSimpleConfig(fullCfg *Config, simpleCfg *SimpleConfig) {
 	}
 	if simpleCfg.HTTPPort != "" {
 		fullCfg.HTTPPort = simpleCfg.HTTPPort
-	}
-	if simpleCfg.LicenseType != "" {
-		fullCfg.LicenseType = simpleCfg.LicenseType
 	}
 	// 处理数据库加密配置
 	fullCfg.DBUseEncryption = simpleCfg.DBUseEncryption

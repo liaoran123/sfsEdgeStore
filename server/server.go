@@ -158,9 +158,6 @@ func (s *Server) registerRoutes() {
 	http.HandleFunc("/subscription-topics", s.handleWebIndex)
 	http.HandleFunc("/static/", s.handleStaticFiles)
 
-	// 许可证信息API - 不需要认证
-	http.HandleFunc("/api/license", s.handleLicenseInfo)
-
 	// MQTT配置更新API - 不需要认证，用于Web界面配置
 	http.HandleFunc("/api/config/mqtt", s.handleMQTTConfigUpdate)
 
@@ -1292,7 +1289,6 @@ func (s *Server) handleOneClickConfig(w http.ResponseWriter, r *http.Request) {
 		EnableAlertNotifications: false,
 		EnableResourceMonitoring: true,
 		DBScenario:               config.ScenarioEdge,
-		LicenseType:              "community",
 	}
 
 	// 保存智能配置
@@ -1531,25 +1527,6 @@ func (s *Server) handleStaticFiles(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Serving file: %s", filePath)
 	http.ServeFile(w, r, filePath)
-}
-
-// handleLicenseInfo 处理许可证信息请求
-func (s *Server) handleLicenseInfo(w http.ResponseWriter, r *http.Request) {
-	cfg := config.GetConfigManager().GetConfig()
-	if cfg == nil {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"license_type": "opensource",
-			"features": config.EnterpriseFeatures{
-				MaxDevices: 50,
-			},
-		})
-		return
-	}
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"license_type": cfg.LicenseType,
-		"features":     cfg.EnterpriseFeatures,
-	})
 }
 
 // handleMQTTConfigUpdate 处理MQTT配置更新请求（不需要认证）
