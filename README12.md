@@ -1,3 +1,5 @@
+[中文](./README.md) | [English](./README_en.md)
+
 # sfsEdgeStore
 
 轻量级工业物联网边缘数据存储适配器，专为 EdgeX Foundry 设计。
@@ -39,40 +41,40 @@
 
 | 挑战                 | 解决方案                   |
 | ------------------ | ---------------------- |
-| 边缘设备资源有限           | 内存 <15MB，CPU <5%，超轻量设计 |
+| 边缘设备资源有限           | 内存 <30MB，CPU <7%，超轻量设计 |
 | 网络中断时数据丢失          | 本地存储，断网正常运行            |
 | 重型数据库部署复杂          | 5 分钟部署，零配置             |
 | EdgeX Foundry 存储缺失 | 原生 EdgeX 集成，开箱即用       |
 | 数据查询响应慢            | 本地 LevelDB，毫秒级查询       |
 | 依赖云端               | 独立运行，无需中心系统            |
 
-## 📋 产品简介
+## 📋 产品概述
 
-**sfsEdgeStore** 是专为工业物联网边缘场景设计的轻量级数据存储适配器，作为 EdgeX Foundry 和 sfsDb 之间的桥梁，提供高效的本地数据读写和缓存能力。
+**sfsEdgeStore** 是一款专为工业物联网边缘场景设计的轻量级数据存储适配器。它作为 EdgeX Foundry 与 sfsDb 之间的桥梁，提供高效的本地数据读写和缓存能力。
 
 ### 为什么 EdgeX 需要 sfsEdgeStore
 
-> EdgeX 是最好的连接框架，但它默认不存数据。别用 Redis（断电丢数据），别用 InfluxDB（边缘太卡）。sfsEdgeStore 是 EdgeX 的原生存储插件，专为资源受限的边缘网关设计。
+> EdgeX 是最好的连接框架，但它默认不持久化数据。不要用 Redis（断电丢数据），不要用 InfluxDB（边缘设备扛不住）。sfsEdgeStore 是 EdgeX 的原生存储插件，专为资源受限的边缘网关设计。
 
 ## ✨ 核心功能
 
-- 📡 **MQTT 数据接入**：订阅 EdgeX Foundry 事件主题
-- 💾 **本地数据存储**：sfsDb/LevelDB 高效边缘存储
+- 📡 **MQTT 数据采集**：订阅 EdgeX Foundry 事件主题
+- 💾 **本地数据存储**：sfsDb/LevelDB 高效边缘数据存储
 - 🔒 **数据加密**：AES-256 静态数据加密
-- 🔄 **可靠队列**：断电恢复与数据重试机制
-- 📊 **实时监控**：内置系统与业务指标监控
-- ⚠️ **智能告警**：阈值告警与异常检测
+- 🔄 **可靠队列**：断电恢复、数据重试机制
+- 📊 **实时监控**：内置系统和业务指标监控
+- ⚠️ **智能告警**：阈值告警、异常检测
 - 🗑️ **数据保留**：自动清理过期数据
-- 🔐 **认证授权**：API Key 与 RBAC 访问控制
-- 🌐 **HTTP API**：RESTful 接口供外部查询
-- 📦 **备份恢复**：自动备份与恢复功能
+- 🔐 **身份认证**：API Key 和 RBAC 访问控制
+- 🌐 **HTTP API**：RESTful 接口支持外部查询
+- 📦 **备份恢复**：自动化备份与恢复
 
 ## 🚀 快速开始
 
-### 前置条件
+### 前置要求
 
-- Go 1.21+（源码编译需要）
-- EdgeX Foundry（可选，数据源）
+- Go 1.21+（源码编译）
+- EdgeX Foundry（可选，作为数据源）
 - MQTT Broker（如 Mosquitto）
 
 ### 方式一：二进制部署（推荐）
@@ -84,7 +86,7 @@
 # 直接运行（测试用）
 ./sfsedgestore
 
-# 生产环境使用 systemd（Linux）或 Windows 服务
+# 生产环境请使用 systemd（Linux）或 Windows Service
 ```
 
 ### 方式二：Docker Compose（推荐）
@@ -95,7 +97,7 @@ cd sfsEdgeStore
 docker-compose up -d
 ```
 
-同时启动 sfsEdgeStore + MQTT Broker。访问仪表板 `http://localhost:8081`。
+同时启动 sfsEdgeStore + MQTT Broker。访问仪表盘：`http://localhost:8081`。
 
 ### 方式三：Docker
 
@@ -123,24 +125,24 @@ go build -ldflags="-s -w" -o sfsedgestore .
 # 健康检查
 curl http://localhost:8081/health
 
-# 在浏览器中打开仪表板
+# 浏览器打开仪表盘
 # http://localhost:8081
 ```
 
-### 零配置启动
+### 零配置
 
-sfsEdgeStore 使用智能默认值，无需配置即可启动：
+sfsEdgeStore 使用智能默认值，无需任何配置即可启动：
 
-| 配置项         | 默认值                    |
+| 设置          | 默认值                    |
 | ----------- | ---------------------- |
 | MQTT Broker | `tcp://localhost:1883` |
-| MQTT 主题     | `edgex/events/#`       |
+| MQTT Topic  | `edgex/events/#`       |
 | HTTP 端口     | `8081`                 |
 | 数据库路径       | `data`                 |
 
 ### 配置示例
 
-创建 `config.json` 自定义配置：
+创建 `config.json` 自定义设置：
 
 ```json
 {
@@ -162,18 +164,18 @@ sfsEdgeStore 使用智能默认值，无需配置即可启动：
 | `mqtt_topic`              | EdgeX 事件主题模式                                  |
 | `db_path`                 | 本地数据库存储路径                                     |
 | `db_scenario`             | 性能配置：`embedded`、`iot`、`edge`、`game`、`default` |
-| `enable_retention_policy` | 自动清理过期数据                                      |
+| `enable_retention_policy` | 自动清理旧数据                                       |
 | `retention_days`          | 数据保留天数                                        |
 
-> MQTT 主题通过 Web 仪表板的 **主题订阅** 页面（`http://localhost:8081/mqtt-subscription`）管理。
+> MQTT 主题通过 Web 仪表盘的**主题订阅**页面（`http://localhost:8081/mqtt-subscription`）管理。
 
-## 🏗️ 架构设计
+## 🏗️ 架构
 
 ### 轻量级边缘架构
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      边缘节点（资源受限）                     │
+│                      边缘节点（资源受限）                      │
 │                                                             │
 │  ┌───────────────────────────────────────────────────────┐ │
 │  │              EdgeX Foundry                              │ │
@@ -187,7 +189,7 @@ sfsEdgeStore 使用智能默认值，无需配置即可启动：
 │  │  │  MQTT 客户端  │→ │  数据队列    │→ │  sfsDb   │  │ │
 │  │  └──────────────┘  └──────────────┘  └──────────┘  │ │
 │  │  ┌──────────────┐  ┌──────────────┐                  │ │
-│  │  │  HTTP 服务   │  │  监控告警    │                  │ │
+│  │  │  HTTP 服务    │  │  监控模块    │                  │ │
 │  │  └──────────────┘  └──────────────┘                  │ │
 │  └───────────────────────────────────────────────────────┘ │
 │                       │ HTTP API                         │
@@ -198,7 +200,7 @@ sfsEdgeStore 使用智能默认值，无需配置即可启动：
 
 ### 设计原则
 
-- **小而美**：只做一件事，做到极致
+- **小而美**：专注一件事，做到极致
 - **数据主权**：数据留在本地，不依赖云端
 - **边缘优先**：所有功能优先考虑边缘场景
 - **零依赖**：仅依赖 sfsDb，无重型组件
@@ -206,39 +208,39 @@ sfsEdgeStore 使用智能默认值，无需配置即可启动：
 
 ## 📚 文档
 
-完整文档请查看 [docs](./docs/) 目录：
+完整文档位于 [docs](./docs/) 目录：
 
-| 文档                                | 说明            |
-| --------------------------------- | ------------- |
-| [快速开始](./docs/quick-start.md)     | 5 分钟上手        |
-| [安装指南](./docs/installation.md)    | 安装与部署         |
-| [API 参考](./docs/api-reference.md) | REST API 文档   |
-| [配置参考](./docscn/配置参考.md)          | 所有配置项（中文）     |
-| [系统架构](./docs/architecture.md)    | 架构概览          |
-| [安全指南](./docscn/安全指南.md)          | 认证、TLS、加密（中文） |
-| [故障排查](./docscn/故障排查.md)          | 常见问题（中文）      |
+| 文档                                | 说明          |
+| --------------------------------- | ----------- |
+| [快速开始](./docs/quick-start.md)     | 5 分钟入门指南    |
+| [安装部署](./docs/installation.md)    | 安装和部署指南     |
+| [API 参考](./docs/api-reference.md) | REST API 文档 |
+| [配置说明](./docs/configuration.md)   | 所有配置项说明     |
+| [架构设计](./docs/architecture.md)    | 系统架构概述      |
+| [安全指南](./docs/security.md)        | 认证、TLS、加密   |
+| [故障排查](./docs/troubleshooting.md) | 常见问题和解决方案   |
+
+📖 [查看文档索引](./docs/README.md)
 
 ## 💼 合作与投资
 
 > **我们卖的是解决方案，不是软件。**
 
-**sfsEdgeStore** 定位为工业物联网边缘数据解决方案。
+**sfsEdgeStore** 定位为工业物联网边缘数据解决方案——提供完整的硬件+软件+部署服务包，而非单一产品。
 
 ### 🤝 寻求合作 / 融资
 
 我们正在积极寻找战略合作伙伴和投资人，共同加速在工业物联网市场的布局。
 
-> 传统工业软件需要昂贵的工控机才能运行。**sfsEdgeStore 以 27.6MB 的极致轻量，让 200 元的 ARM 网关具备完整的数据处理能力。**
->
-> 这不仅仅是一个软件，它正在重新定义工业网关的硬件标准。
+**投资人关心的核心指标**
 
-| 关心的点     | 传统工业软件/方案      | sfsEdgeStore（你的方案） | 你的融资故事                   |
-| :------- | :------------- | :----------------- | :----------------------- |
-| **硬件成本** | 需昂贵工控机（500 元+） | 普通 ARM 网关（200 元）   | *"我们帮客户省下了 60% 的硬件预算。"*  |
-| **资源占用** | 臃肿，吃内存         | **27.6MB** 极致轻量    | *"老旧设备也能跑，市场存量改造空间巨大。"*  |
-| **部署难度** | 需专业实施团队        | **5 分钟**开箱即用       | *"可以像 SaaS 一样快速规模化复制。"*  |
-| **技术壁垒** | 依赖外部库，重        | **纯 Go**，零依赖       | *"极高的工程效率，一个人顶一个团队。"*    |
-| **可扩展性** | 受限于基础设施        | 无状态，水平扩展           | *"为下一个 10,000 个边缘节点而生。"* |
+| 投资人关心的点  | 传统工业软件/方案      | sfsEdgeStore（我们的方案） | 我们的融资故事                  |
+| :------- | :------------- | :------------------ | :----------------------- |
+| **硬件成本** | 需昂贵工控机（500 元+） | 普通 ARM 网关（200 元）    | *"我们帮客户省下了 60% 的硬件预算。"*  |
+| **资源占用** | 臃肿，吃内存         | **27.6MB** 极致轻量     | *"老旧设备也能跑，市场存量改造空间巨大。"*  |
+| **部署难度** | 需专业实施团队        | **5 分钟**开箱即用        | *"可以像 SaaS 一样快速规模化复制。"*  |
+| **技术壁垒** | 依赖外部库，重        | **纯 Go**，零依赖        | *"极高的工程效率，一个人顶一个团队。"*    |
+| **可扩展性** | 受限于基础设施        | 无状态，水平扩展            | *"为下一个 10,000 个边缘节点而生。"* |
 
 ### 💡 我们能提供什么
 
@@ -249,17 +251,41 @@ sfsEdgeStore 使用智能默认值，无需配置即可启动：
 | **技术支持** | 优先邮件支持、部署协助、故障排查 |
 | **培训赋能** | 现场或远程技术培训        |
 
-**联系：** <sfsweb@qq.com>
+**联系：** <liao010203kk@gmail.com>
+
+***
+
+<details>
+<summary><strong>English Version</strong></summary>
+
+## About This Project
+
+sfsEdgeStore is a lightweight Industrial IoT Edge Data Storage Adapter designed for EdgeX Foundry. Built by the official sfsDb team, it provides efficient local data storage with minimal resource footprint.
+
+### Key Highlights
+
+| Metric    | Value                               |
+| --------- | ----------------------------------- |
+| Memory    | \~30 MB (production)                |
+| CPU       | 1.7% (normal load)                  |
+| Startup   | <0.2 seconds                        |
+| Data Loss | 0% (even under 4000 msg/sec stress) |
+
+### Contact
+
+For partnership inquiries: <liao010203kk@gmail.com>
+
+</details>
 
 ## 🤝 贡献
 
 欢迎提交 Issue 和 Pull Request！
 
-请查看 [CONTRIBUTING.md](./CONTRIBUTING.md) 了解贡献指南。
+请参阅 [CONTRIBUTING.md](./CONTRIBUTING.md) 了解贡献指南。
 
 ## 🔒 安全
 
-请查看 [SECURITY.md](./SECURITY.md) 了解安全策略和漏洞报告方式。
+请参阅 [SECURITY.md](./SECURITY.md) 了解安全政策和漏洞报告。
 
 ## 📄 许可证
 
