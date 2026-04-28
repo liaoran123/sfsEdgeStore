@@ -19,6 +19,7 @@
 - **数据可靠性**：100%无丢失
 
 ![监控仪表盘](./img/sfsEdgeStoreCn.png)
+![高压测试](./img/高压sfsEdgeStoreCn.png)
 
 ## 🎯 解决的核心问题
 
