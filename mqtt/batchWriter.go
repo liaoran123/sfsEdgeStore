@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -41,7 +40,7 @@ func NewBatchWriter(monitor *monitor.Monitor, broadcaster broadcast.Broadcaster,
 	}
 
 	w := &BatchWriter{
-		writePool:      pool.NewPoolForIO(),
+		writePool:      pool.NewPoolForIO(), // 并发写入任务池，固定协程数、复用、自带背压控制
 		monitor:        monitor,
 		broadcaster:    broadcaster,
 		analyzer:       analyzer,
@@ -95,6 +94,12 @@ func (w *BatchWriter) flush() {
 }
 
 // 写入数据
+/*
+doWrite() 分发到三个出口：
+         ├── 1. database.BatchInsertNoInc()  → 写入数据库
+         ├── 2. broadcastData()                  → 推送到 WebSocket
+         └── 3. analyzeData()                    → 数据分析
+*/
 func (w *BatchWriter) doWrite(records []*map[string]any) {
 	if len(records) == 0 {
 		return
@@ -112,12 +117,13 @@ func (w *BatchWriter) doWrite(records []*map[string]any) {
 	}
 
 	w.monitor.IncrementMQTTMessagesProcessed() // MQTT 处理消息数 +1
-
-	count := flushCount.Add(1)
-	if count%50 == 0 { // 内存优化（每 50 次 flush）
-		debug.FreeOSMemory() // 释放未使用的内存回操作系统
-	}
-
+	/*
+		每 50 次 flush 调用 debug.FreeOSMemory() 会触发全局 GC STW（Stop The World），影响实时性。
+			count := flushCount.Add(1)
+			if count%50 == 0 { // 内存优化（每 50 次 flush）
+				debug.FreeOSMemory() // 释放未使用的内存回操作系统，防止边缘设备内存泄漏
+			}
+	*/
 	if w.broadcaster != nil {
 		// 广播数据给所有 WebSocket 连接的 Web 客户端
 		w.broadcastData("device_data", map[string]any{
