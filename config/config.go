@@ -108,6 +108,8 @@ type Config struct {
 	EnterpriseFeatures EnterpriseFeatures     `json:"enterprise_features"` // 功能开关
 	// 自定义订阅主题
 	CustomTopics []string `json:"custom_topics"` // 自定义MQTT订阅主题
+	// 设备名称最大长度配置
+	DeviceNameMaxLength int `json:"device_name_max_length" env:"EDGEX_DEVICE_NAME_MAX_LENGTH"` // 设备名称最大长度，默认64
 }
 
 // EnterpriseFeatures 功能开关
@@ -299,6 +301,8 @@ func Load() (*Config, error) {
 			EnableAdvancedAnalytics: false,
 			EnableBigScreenMode:     false,
 		},
+		// 设备名称最大长度默认值
+		DeviceNameMaxLength: 64,
 	}
 
 	// 2. 尝试从EdgeX配置中心加载

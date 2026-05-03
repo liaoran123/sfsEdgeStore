@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 	"strconv"
 	"strings"
+
+	"sfsEdgeStore/config"
 )
 
 // ParseValue 根据 value 的内容自动判断类型并进行相应的转换
@@ -22,8 +24,8 @@ func ParseValue(value string) any {
 	}
 
 	// 尝试解析为 base64 编码的二进制数据
-	if strings.HasPrefix(value, "base64:") {
-		base64Data := strings.TrimPrefix(value, "base64:")
+	if after, ok := strings.CutPrefix(value, "base64:"); ok {
+		base64Data := after
 		if binaryData, err := base64.StdEncoding.DecodeString(base64Data); err == nil {
 			return binaryData
 		}
@@ -33,19 +35,20 @@ func ParseValue(value string) any {
 	return value
 }
 
-// FormatDeviceName 格式化设备名称，确保长度为 64 字符
-// 如果长度超过 64，则截断；如果不足 64，则用空格补全
+// FormatDeviceName 格式化设备名称，确保长度为配置的最大长度
+// 如果长度超过最大长度，则截断；如果不足最大长度，则用空格补全
 func FormatDeviceName(deviceName string) string {
-	const maxLength = 64
-
-	// 截断过长的设备名称
-	if len(deviceName) > maxLength {
-		return deviceName[:maxLength]
+	maxLen := 64
+	if cfg := config.GetConfigManager().GetConfig(); cfg != nil && cfg.DeviceNameMaxLength > 0 {
+		maxLen = cfg.DeviceNameMaxLength
 	}
 
-	// 补全不足 64 字符的设备名称
-	if len(deviceName) < maxLength {
-		return deviceName + strings.Repeat(" ", maxLength-len(deviceName))
+	if len(deviceName) > maxLen {
+		return deviceName[:maxLen]
+	}
+
+	if len(deviceName) < maxLen {
+		return deviceName + strings.Repeat(" ", maxLen-len(deviceName))
 	}
 
 	return deviceName

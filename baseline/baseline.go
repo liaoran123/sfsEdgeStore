@@ -2,7 +2,7 @@ package baseline
 
 import (
 	"math"
-	"sfsEdgeStore/core/database"
+	"sfsEdgeStore/database"
 	"time"
 
 	"github.com/liaoran123/sfsDb/record"

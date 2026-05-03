@@ -18,11 +18,9 @@ import (
 	"sfsEdgeStore/cloudsync/sync"
 	"sfsEdgeStore/config"
 	"sfsEdgeStore/configwizard"
-	"sfsEdgeStore/core/database"
-	"sfsEdgeStore/core/mqtt"
+	"sfsEdgeStore/database"
 	"sfsEdgeStore/monitor"
-	"sfsEdgeStore/pathutil"
-	"sfsEdgeStore/queue"
+	"sfsEdgeStore/mqtt"
 	"sfsEdgeStore/resource"
 	"sfsEdgeStore/retention"
 	"sfsEdgeStore/server"
@@ -43,19 +41,11 @@ type Components struct {
 	SyncManager     *sync.SyncManager
 	Server          *server.Server
 	MQTTClient      *mqtt.Client
-	DataQueue       *queue.Queue
 }
 
 func main() {
-	// 1. 解析命令行参数
-	args := cli.Parse()
-	if args.Help {
-		args.ShowHelp()
-		return
-	}
-
-	// 2. 初始化配置
-	appConfig, err := initConfig(args)
+	// 1. 初始化配置
+	appConfig, err := initConfig()
 	if err != nil {
 		log.Fatalf("配置初始化失败: %v", err)
 	}
@@ -73,7 +63,7 @@ func main() {
 	waitForShutdown(components)
 }
 
-func initConfig(args *cli.Args) (*config.Config, error) {
+func initConfig() (*config.Config, error) {
 	// 加载配置
 	appConfig, err := config.Load()
 	if err != nil {
@@ -84,17 +74,6 @@ func initConfig(args *cli.Args) (*config.Config, error) {
 	wizard := configwizard.NewWizard(appConfig)
 	if err := wizard.Run(); err != nil {
 		log.Printf("配置向导失败: %v", err)
-	}
-
-	// 命令行参数覆盖配置
-	if args.MQTTBroker != "" {
-		appConfig.MQTTBroker = args.MQTTBroker
-	}
-	if args.MQTTTopic != "" {
-		appConfig.MQTTTopic = args.MQTTTopic
-	}
-	if args.HTTPPort != "" {
-		appConfig.HTTPPort = args.HTTPPort
 	}
 
 	return appConfig, nil
@@ -114,7 +93,7 @@ func initComponents(appConfig *config.Config) (*Components, error) {
 		log.Printf("告警通知器启动失败: %v", err)
 	}
 
-	// 看门狗已禁用（功能与资源监控器重复，且阈值500MB永远不会触发）
+	// 看门狗已禁用（功能与资源监控器重复，且阈值 500MB 永远不会触发）
 	// watchdogInstance := watchdog.NewWatchdog(monitorInstance)
 	// watchdogInstance.Start()
 
@@ -135,13 +114,6 @@ func initComponents(appConfig *config.Config) (*Components, error) {
 	authManager := auth.NewAuthManager()
 	authManager.StartCleanupTask(24 * time.Hour)
 
-	//// 初始化数据队列
-	dataQueuePath, _ := pathutil.Join("data_queue")
-	dataQueue, err := queue.NewQueue(dataQueuePath)
-	if err != nil {
-		return nil, fmt.Errorf("数据队列初始化失败: %v", err)
-	}
-
 	// 初始化Agent（已禁用，减少 CPU 占用）
 	// agentInstance, err := agent.NewAgent(appConfig, monitorInstance)
 	// if err != nil {
@@ -149,7 +121,7 @@ func initComponents(appConfig *config.Config) (*Components, error) {
 	// }
 	var agentInstance *agent.Agent
 
-	// 初始化数据保留策略管理器（低频：每5分钟检查一次）
+	// 初始化数据保留策略管理器（低频：30分钟检查一次）
 	retentionManager := retention.NewRetentionManager(database.Table, appConfig)
 	if err := retentionManager.Start(); err != nil {
 		log.Printf("数据保留策略管理器启动失败: %v", err)
@@ -176,15 +148,12 @@ func initComponents(appConfig *config.Config) (*Components, error) {
 	}
 
 	// 初始化MQTT客户端
-	var mqttClient *mqtt.Client
-	mqttClient, err = mqtt.NewClient(appConfig, dataQueue, monitorInstance, analyzerInstance, serverInstance)
+	mqttClient, err := mqtt.NewClient(appConfig, monitorInstance, serverInstance, analyzerInstance)
 	if err != nil {
 		log.Printf("MQTT客户端初始化失败: %v", err)
-		// 即使MQTT初始化失败，也继续启动HTTP服务器
 	} else {
-		if err := mqttClient.Subscribe(); err != nil {
+		if err := mqttClient.Subscribe(mqtt.GetTopics(appConfig)); err != nil {
 			log.Printf("MQTT订阅失败: %v", err)
-			// 即使MQTT订阅失败，也继续启动HTTP服务器
 		}
 	}
 
@@ -198,7 +167,6 @@ func initComponents(appConfig *config.Config) (*Components, error) {
 		SyncManager:     syncManager,
 		Server:          serverInstance,
 		MQTTClient:      mqttClient,
-		DataQueue:       dataQueue,
 	}, nil
 }
 
@@ -211,15 +179,6 @@ func startServices(c *Components, appConfig *config.Config) {
 	log.Printf("MQTT Topic: %s", appConfig.MQTTTopic)
 	log.Printf("HTTP端口: %s", appConfig.HTTPPort)
 	log.Println("sfsEdgeStore started successfully")
-
-	// 启动队列处理
-	c.DataQueue.ProcessQueue(func(data interface{}) error {
-		records, ok := data.([]*map[string]any)
-		if !ok {
-			return fmt.Errorf("队列数据类型错误")
-		}
-		return database.BatchInsertWithRetry(database.Table, records, 3, 2*time.Second)
-	})
 
 	// 启动Agent
 	if c.Agent != nil {

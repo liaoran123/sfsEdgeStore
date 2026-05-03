@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"sfsEdgeStore/config"
-	"sfsEdgeStore/core/database"
+	"sfsEdgeStore/database"
 	"sfsEdgeStore/monitor"
 )
 

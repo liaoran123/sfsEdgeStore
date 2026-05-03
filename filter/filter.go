@@ -12,23 +12,23 @@ import (
 
 type FilterManager struct {
 	deviceConfig      map[string]*devconfig.Device
-	lastValues        map[string]interface{}
+	lastValues        map[string]any
 	lastTimes         map[string]time.Time
-	allowedDevices    []string // 允许的设备列表
-	allowedResources  []string // 允许的资源名称列表
-	excludedDevices   []string // 排除的设备列表
-	excludedResources []string // 排除的资源名称列表
+	allowedDevices    map[string]struct{} // 允许的设备集合（O(1)查找）// struct{} 是零大小类型（zero-size type）大小 = 0 字节
+	allowedResources  map[string]struct{} // 允许的资源集合
+	excludedDevices   map[string]struct{} // 排除的设备集合
+	excludedResources map[string]struct{} // 排除的资源集合
 }
 
 func NewFilterManager() *FilterManager {
 	return &FilterManager{
 		deviceConfig:      make(map[string]*devconfig.Device),
-		lastValues:        make(map[string]interface{}),
+		lastValues:        make(map[string]any),
 		lastTimes:         make(map[string]time.Time),
-		allowedDevices:    []string{},
-		allowedResources:  []string{},
-		excludedDevices:   []string{},
-		excludedResources: []string{},
+		allowedDevices:    make(map[string]struct{}),
+		allowedResources:  make(map[string]struct{}),
+		excludedDevices:   make(map[string]struct{}),
+		excludedResources: make(map[string]struct{}),
 	}
 }
 
@@ -115,111 +115,80 @@ func (fm *FilterManager) toFloat64(value interface{}) (float64, error) {
 	}
 }
 
-func (fm *FilterManager) updateLastValue(key string, value interface{}) {
-	fm.lastValues[key] = value
-}
-
-func (fm *FilterManager) updateLastTime(key string) {
-	fm.lastTimes[key] = time.Now()
-}
-
 func (fm *FilterManager) SetAllowedDevices(devices []string) {
-	fm.allowedDevices = devices
-	log.Printf("Set allowed devices: %v", devices)
+	fm.allowedDevices = make(map[string]struct{}, len(devices))
+	for _, d := range devices {
+		fm.allowedDevices[d] = struct{}{}
+	}
+	log.Printf("Set allowed devices: %d", len(devices))
 }
 
 func (fm *FilterManager) SetAllowedResources(resources []string) {
-	fm.allowedResources = resources
-	log.Printf("Set allowed resources: %v", resources)
+	fm.allowedResources = make(map[string]struct{}, len(resources))
+	for _, r := range resources {
+		fm.allowedResources[r] = struct{}{}
+	}
+	log.Printf("Set allowed resources: %d", len(resources))
 }
 
 func (fm *FilterManager) SetExcludedDevices(devices []string) {
-	fm.excludedDevices = devices
-	log.Printf("Set excluded devices: %v", devices)
+	fm.excludedDevices = make(map[string]struct{}, len(devices))
+	for _, d := range devices {
+		fm.excludedDevices[d] = struct{}{}
+	}
+	log.Printf("Set excluded devices: %d", len(devices))
 }
 
 func (fm *FilterManager) SetExcludedResources(resources []string) {
-	fm.excludedResources = resources
-	log.Printf("Set excluded resources: %v", resources)
+	fm.excludedResources = make(map[string]struct{}, len(resources))
+	for _, r := range resources {
+		fm.excludedResources[r] = struct{}{}
+	}
+	log.Printf("Set excluded resources: %d", len(resources))
 }
 
 func (fm *FilterManager) ShouldStore(deviceName, readingName string, value interface{}) bool {
-	// 1. 检查设备是否在排除列表中
-	for _, excludedDevice := range fm.excludedDevices {
-		if excludedDevice == deviceName {
-			return false
-		}
+	// 1. 检查排除列表
+	if _, excluded := fm.excludedDevices[deviceName]; excluded {
+		return false
+	}
+	if _, excluded := fm.excludedResources[readingName]; excluded {
+		return false
 	}
 
-	// 2. 检查资源是否在排除列表中
-	for _, excludedResource := range fm.excludedResources {
-		if excludedResource == readingName {
-			return false
-		}
-	}
-
-	// 3. 检查设备是否在允许列表中（如果允许列表不为空）
+	// 2. 检查允许列表（非空时才检查）
 	if len(fm.allowedDevices) > 0 {
-		found := false
-		for _, allowedDevice := range fm.allowedDevices {
-			if allowedDevice == deviceName {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if _, allowed := fm.allowedDevices[deviceName]; !allowed {
 			return false
 		}
 	}
-
-	// 4. 检查资源是否在允许列表中（如果允许列表不为空）
 	if len(fm.allowedResources) > 0 {
-		found := false
-		for _, allowedResource := range fm.allowedResources {
-			if allowedResource == readingName {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if _, allowed := fm.allowedResources[readingName]; !allowed {
 			return false
 		}
 	}
 
-	// 5. 查找设备配置
+	// 3. 查找设备配置
 	device, ok := fm.deviceConfig[deviceName]
 	if !ok {
-		// 没有配置，默认存储
-		return true
+		return true // 无配置，默认存储
 	}
 
-	// 生成唯一键（设备名+读数名）
-	key := fmt.Sprintf("%s:%s", deviceName, readingName)
-
-	// 6. 检查最小存储间隔
-	if device.MinInterval != "" {
-		if !fm.checkMinInterval(key, device.MinInterval) {
-			return false
-		}
+	// 4. 检查过滤规则
+	key := deviceName + ":" + readingName
+	if device.MinInterval != "" && !fm.checkMinInterval(key, device.MinInterval) {
+		return false
+	}
+	if device.OnChange && !fm.checkOnChange(key, value) {
+		return false
+	}
+	if device.ValueOperator != "" && device.ValueThreshold != 0 && !fm.checkValueThreshold(value, device.ValueOperator, device.ValueThreshold) {
+		return false
 	}
 
-	// 7. 检查OnChange过滤
-	if device.OnChange {
-		if !fm.checkOnChange(key, value) {
-			return false
-		}
-	}
-
-	// 8. 检查阈值过滤
-	if device.ValueOperator != "" && device.ValueThreshold != 0 {
-		if !fm.checkValueThreshold(value, device.ValueOperator, device.ValueThreshold) {
-			return false
-		}
-	}
-
-	// 所有过滤条件通过，存储数据
-	fm.updateLastValue(key, value)
-	fm.updateLastTime(key)
+	// 5. 更新最后记录的值和时间
+	fm.lastValues[key] = value
+	fm.lastTimes[key] = time.Now()
 	return true
 }
 

@@ -15,18 +15,18 @@ import (
 	"sfsEdgeStore/alert"
 	"sfsEdgeStore/auth"
 	"sfsEdgeStore/backup"
+	"sfsEdgeStore/baseline"
 	"sfsEdgeStore/common"
 	"sfsEdgeStore/config"
 	"sfsEdgeStore/configwizard"
-	"sfsEdgeStore/core/baseline"
-	"sfsEdgeStore/core/database"
-	"sfsEdgeStore/core/edgex"
-	"sfsEdgeStore/core/mqtt"
-	"sfsEdgeStore/core/template"
+	"sfsEdgeStore/database"
+	"sfsEdgeStore/edgex"
 	"sfsEdgeStore/monitor"
+	"sfsEdgeStore/mqtt"
 	"sfsEdgeStore/pathutil"
 	"sfsEdgeStore/resource"
 	"sfsEdgeStore/retention"
+	"sfsEdgeStore/template"
 	"sfsEdgeStore/ws"
 
 	"github.com/gorilla/websocket"
@@ -455,19 +455,16 @@ func handleEdgeXEvent(s *Server, w http.ResponseWriter, event *edgex.EdgeXEvent)
 		// 解析值的类型
 		value := common.ParseValue(reading.Value)
 
-		// 提取设备类型 (修正版，增加容错)
-		deviceType := extractDeviceType(event.DeviceName)
-
 		data := map[string]any{
-			"id":         reading.ID,
-			"deviceName": event.DeviceName, // 设备名称已经在ProcessMessage中格式化
-			"deviceType": deviceType,       // 可能为空，需要在下游处理
-			"reading":    reading.ResourceName,
-			"value":      value,
-			"valueType":  reading.ValueType,
-			// 移除 baseType，因为它不是标准 Reading 字段
-			"timestamp": reading.Origin, // 纳秒级时间戳，类型为 int64
-			"metadata":  metadataStr,
+			"id":          reading.ID,
+			"deviceName":  event.DeviceName,
+			"profileName": event.ProfileName,
+			"reading":     reading.ResourceName,
+			"value":       value,
+			"valueType":   reading.ValueType,
+			"baseType":    reading.BaseType,
+			"timestamp":   reading.Origin,
+			"metadata":    metadataStr,
 		}
 		records = append(records, &data)
 	}

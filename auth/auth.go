@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"sfsEdgeStore/core/database"
+	"sfsEdgeStore/database"
 )
 
 // AuthManager 认证管理器
