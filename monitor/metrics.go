@@ -1,124 +1,65 @@
 package monitor
 
 import (
-	"os"
+	"log"
 	"runtime"
+	"sync/atomic"
 	"time"
-
-	"github.com/shirou/gopsutil/v4/process"
 )
 
+// MetricsCollector 收集系统和应用指标
 type MetricsCollector struct {
-	metrics         metricsData
-	startTime       time.Time
-	lastMetrics     metricsData
-	lastCollectTime time.Time
+	startTime     time.Time    // 启动时间
+	mqttReceived  atomic.Int64 // MQTT 接收消息数
+	mqttProcessed atomic.Int64 // MQTT 处理消息数
+	mqttFiltered  atomic.Int64 // MQTT 过滤消息数
+	totalRecords  atomic.Int64 // 总存储记录数
+	mqttConnected atomic.Bool  // MQTT 连接状态
+	httpRequests  atomic.Int64 // HTTP 请求数（仅计数，不返回前端）
 }
 
+// NewMetricsCollector 创建指标收集器
 func NewMetricsCollector() *MetricsCollector {
-	goroutines := runtime.NumGoroutine()
-	now := time.Now()
-	return &MetricsCollector{
-		metrics: metricsData{
-			System: SystemMetrics{
-				Goroutines: goroutines,
-			},
-		},
-		startTime: now,
-		lastMetrics: metricsData{
-			System: SystemMetrics{
-				Goroutines: goroutines,
-			},
-		},
-		lastCollectTime: now,
-	}
+	return &MetricsCollector{startTime: time.Now()}
 }
 
-func (c *MetricsCollector) IncrementMQTTMessagesReceived() {
-	c.metrics.Application.MQTTMessagesReceived.Add(1)
+// 指标递增方法
+func (c *MetricsCollector) IncrementMQTTMessagesReceived()      { c.mqttReceived.Add(1) }
+func (c *MetricsCollector) IncrementMQTTMessagesProcessed()     { c.mqttProcessed.Add(1) }
+func (c *MetricsCollector) IncrementMQTTMessagesFiltered()      { c.mqttFiltered.Add(1) }
+func (c *MetricsCollector) IncrementTotalRecordsStored(n int64) { c.totalRecords.Add(n) }
+
+// MQTT 连接状态
+func (c *MetricsCollector) SetMQTTConnectionStatus(ok bool) { c.mqttConnected.Store(ok) }
+func (c *MetricsCollector) IsMQTTConnected() bool           { return c.mqttConnected.Load() }
+
+// 错误和日志记录（告警需要）
+func (c *MetricsCollector) RecordError(errorType, message string) {
+	log.Printf("[ERROR] %s: %s", errorType, message)
 }
-func (c *MetricsCollector) IncrementMQTTMessagesProcessed() {
-	c.metrics.Application.MQTTMessagesProcessed.Add(1)
-}
-func (c *MetricsCollector) IncrementMQTTMessagesFiltered() {
-	c.metrics.Application.MQTTMessagesFiltered.Add(1)
-}
-func (c *MetricsCollector) IncrementTotalRecordsStored(n int64) {
-	c.metrics.Application.TotalRecordsStored.Add(n)
-}
-func (c *MetricsCollector) IncrementHTTPRequests() { c.metrics.Application.HTTPRequests.Add(1) }
-func (c *MetricsCollector) IncrementDatabaseOperations() {
-	c.metrics.Application.DatabaseOperations.Add(1)
-}
-func (c *MetricsCollector) IncrementErrors() { c.metrics.Application.Errors.Add(1) }
-func (c *MetricsCollector) SetMQTTConnectionStatus(ok bool) {
-	c.metrics.Application.MQTTConnectionStatus.Store(ok)
-}
-func (c *MetricsCollector) IncrementDataReceivedBytes(n int64) {
-	c.metrics.Application.DataReceivedBytes.Add(n)
-}
-func (c *MetricsCollector) IncrementDataStoredBytes(n int64) {
-	c.metrics.Application.DataStoredBytes.Add(n)
-}
-func (c *MetricsCollector) IsMQTTConnected() bool {
-	return c.metrics.Application.MQTTConnectionStatus.Load()
+func (c *MetricsCollector) RecordInfo(infoType, message string) {
+	log.Printf("[INFO] %s: %s", infoType, message)
 }
 
+// HTTP 请求计数（内部使用，不返回前端）
+func (c *MetricsCollector) IncrementHTTPRequests() { c.httpRequests.Add(1) }
+
+// CollectMetrics 采集并返回监控指标（供前端使用）
 func (c *MetricsCollector) CollectMetrics() Metrics {
-	c.collectSystemMetrics()
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+
 	return Metrics{
-		System: c.metrics.System,
+		System: SystemMetrics{
+			MemoryUsage: float64(ms.Alloc) / 1024 / 1024,          // 进程内存使用（MB）
+			Goroutines:  runtime.NumGoroutine(),                   // Goroutine 数量
+			Uptime:      int64(time.Since(c.startTime).Seconds()), // 运行时间（秒）
+		},
 		Application: ApplicationMetrics{
-			MQTTMessagesReceived:  c.metrics.Application.MQTTMessagesReceived.Load(),
-			MQTTMessagesProcessed: c.metrics.Application.MQTTMessagesProcessed.Load(),
-			MQTTMessagesFiltered:  c.metrics.Application.MQTTMessagesFiltered.Load(),
-			TotalRecordsStored:    c.metrics.Application.TotalRecordsStored.Load(),
-			HTTPRequests:          c.metrics.Application.HTTPRequests.Load(),
-			DatabaseOperations:    c.metrics.Application.DatabaseOperations.Load(),
-			Errors:                c.metrics.Application.Errors.Load(),
-			MQTTConnected:         c.metrics.Application.MQTTConnectionStatus.Load(),
-			DataReceivedBytes:     c.metrics.Application.DataReceivedBytes.Load(),
-			DataStoredBytes:       c.metrics.Application.DataStoredBytes.Load(),
+			MQTTMessagesReceived:  c.mqttReceived.Load(),  // MQTT 接收消息数
+			MQTTMessagesProcessed: c.mqttProcessed.Load(), // MQTT 处理消息数
+			MQTTMessagesFiltered:  c.mqttFiltered.Load(),  // MQTT 过滤消息数
+			TotalRecordsStored:    c.totalRecords.Load(),  // 总存储记录数
 		},
 	}
-}
-
-func (c *MetricsCollector) collectSystemMetrics() {
-	c.metrics.System.Goroutines = runtime.NumGoroutine()
-	c.metrics.System.Uptime = int64(time.Since(c.startTime).Seconds())
-	c.metrics.System.MemoryUsage = c.getProcessMemoryMB()
-	c.metrics.System.CPUUsage = 0
-}
-
-func (c *MetricsCollector) getProcessMemoryMB() float64 {
-	pid := int32(os.Getpid())
-	proc, err := process.NewProcess(pid)
-	if err != nil {
-		var ms runtime.MemStats
-		runtime.ReadMemStats(&ms)
-		return float64(ms.Alloc) / 1024 / 1024
-	}
-	memInfo, err := proc.MemoryInfo()
-	if err != nil {
-		var ms runtime.MemStats
-		runtime.ReadMemStats(&ms)
-		return float64(ms.Alloc) / 1024 / 1024
-	}
-	return float64(memInfo.RSS) / 1024 / 1024
-}
-
-func (c *MetricsCollector) GetLastMetrics() *metricsData { return &c.lastMetrics }
-func (c *MetricsCollector) GetLastCollectTime() time.Time {
-	return c.lastCollectTime
-}
-func (c *MetricsCollector) UpdateLastMetrics() {
-	m := &c.metrics.Application
-	l := &c.lastMetrics.Application
-	l.MQTTMessagesReceived.Store(m.MQTTMessagesReceived.Load())
-	l.MQTTMessagesProcessed.Store(m.MQTTMessagesProcessed.Load())
-	l.TotalRecordsStored.Store(m.TotalRecordsStored.Load())
-	l.HTTPRequests.Store(m.HTTPRequests.Load())
-	l.DatabaseOperations.Store(m.DatabaseOperations.Load())
-	l.Errors.Store(m.Errors.Load())
-	c.lastCollectTime = time.Now()
 }

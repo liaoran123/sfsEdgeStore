@@ -4,31 +4,22 @@ import (
 	"sfsEdgeStore/common"
 	"sfsEdgeStore/edgex"
 	"sfsEdgeStore/filter"
-	"sfsEdgeStore/monitor"
 )
 
 // MessageProcessor 消息处理层 - 只负责消息解析、过滤、设备状态更新
 type MessageProcessor struct {
-	monitor       *monitor.Monitor
 	filterManager *filter.FilterManager
 }
 
-func NewMessageProcessor(monitor *monitor.Monitor) *MessageProcessor {
+func NewMessageProcessor() *MessageProcessor {
 	return &MessageProcessor{
-		monitor:       monitor,
 		filterManager: filter.NewFilterManager(),
 	}
 }
 
 // ProcessEvent 处理单个 EdgeX 事件，返回解析后的记录
 func (p *MessageProcessor) ProcessEvent(event *edgex.EdgeXEvent) []*map[string]any {
-	//
-	p.recordMessageReceived(0)
-
 	if event == nil {
-		if p.monitor != nil {
-			p.monitor.IncrementMQTTMessagesFiltered()
-		}
 		return nil
 	}
 
@@ -37,16 +28,6 @@ func (p *MessageProcessor) ProcessEvent(event *edgex.EdgeXEvent) []*map[string]a
 		return records
 	}
 	return nil
-}
-
-// recordMessageReceived 记录收到的消息，包括消息数量和数据量
-func (p *MessageProcessor) recordMessageReceived(payloadSize int) {
-	if p.monitor != nil {
-		p.monitor.IncrementMQTTMessagesReceived()
-		if payloadSize > 0 {
-			p.monitor.IncrementDataReceivedBytes(int64(payloadSize))
-		}
-	}
 }
 
 func (p *MessageProcessor) processReadings(event *edgex.EdgeXEvent) []*map[string]any {
@@ -59,8 +40,6 @@ func (p *MessageProcessor) processReadings(event *edgex.EdgeXEvent) []*map[strin
 			continue
 		}
 
-		p.updateDeviceStatus(event.DeviceName, reading.ResourceName, value)
-
 		if !p.shouldStoreData(event.DeviceName, reading.ResourceName, value) {
 			continue
 		}
@@ -71,15 +50,15 @@ func (p *MessageProcessor) processReadings(event *edgex.EdgeXEvent) []*map[strin
 		}
 
 		data := map[string]any{
-			"id":          reading.ID,           //string 读数的唯一标识符，由 EdgeX 自动生成
-			"deviceName":  event.DeviceName,     //string 设备名称，标识数据来源设备（已格式化固定长度）
-			"reading":     reading.ResourceName, //string 资源/读数名称，如 temperature 、 humidity
-			"value":       value,                //arseValue(reading.Value) any 读数实际值，自动解析为 bool/float64/[]byte/string
-			"valueType":   reading.ValueType,    //string 值的数据类型，如 Float64 、 Int32 、 Bool
-			"profileName": event.ProfileName,    //string 设备配置文件名称，标识设备类型/模型
-			"baseType":    reading.BaseType,     //string 值的基础类型，如 simple 、 array
-			"timestamp":   reading.Origin,       //reading.Origin int64 纳秒级时间戳，表示读数产生时间
-			"metadata":    metadataStr,          //string(reading.Metadata) string 额外元数据（JSON 字符串），用于扩展信息
+			"id":          reading.ID,           // 读数唯一标识
+			"deviceName":  event.DeviceName,     // 设备名称（已格式化固定长度）
+			"reading":     reading.ResourceName, // 资源/读数名称
+			"value":       value,                // 读数实际值（自动解析为 bool/float64/[]byte/string）
+			"valueType":   reading.ValueType,    // 值的数据类型
+			"profileName": event.ProfileName,    // 设备配置文件名称
+			"baseType":    reading.BaseType,     // 值的基础类型
+			"timestamp":   reading.Origin,       // 纳秒级时间戳
+			"metadata":    metadataStr,          // 额外元数据（JSON字符串）
 		}
 
 		records = append(records, &data)
@@ -88,25 +67,7 @@ func (p *MessageProcessor) processReadings(event *edgex.EdgeXEvent) []*map[strin
 	return records
 }
 
-// updateDeviceStatus 更新设备状态
-// 支持 float64, int, int64 类型
-func (p *MessageProcessor) updateDeviceStatus(deviceName, resourceName string, value any) {
-	if p.monitor != nil {
-		floatValue := 0.0
-		switch v := value.(type) {
-		case float64:
-			floatValue = v
-		case int:
-			floatValue = float64(v)
-		case int64:
-			floatValue = float64(v)
-		}
-		p.monitor.UpdateDeviceStatus(deviceName, resourceName, floatValue)
-	}
-}
-
 // shouldStoreData 判断是否需要存储数据
-// 支持 any 类型
 func (p *MessageProcessor) shouldStoreData(deviceName, resourceName string, value any) bool {
 	if p.filterManager != nil {
 		if !p.filterManager.ShouldStore(deviceName, resourceName, value) {

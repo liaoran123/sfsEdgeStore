@@ -218,9 +218,6 @@ func (s *Server) registerRoutes() {
 	// 订阅主题管理API - 不需要认证，用于Web界面展示
 	http.HandleFunc("/api/subscription/themes", s.handleSubscriptionThemes)
 
-	// 设备状态API - 不需要认证，用于Web界面展示
-	http.HandleFunc("/api/device-status", s.handleDeviceStatus)
-
 	// 模板相关API - 不需要认证，用于Web界面展示
 	http.HandleFunc("/api/templates", s.handleTemplates)
 	http.HandleFunc("/api/templates/apply", s.handleApplyTemplate)
@@ -229,11 +226,6 @@ func (s *Server) registerRoutes() {
 	http.HandleFunc("/api/baselines", s.handleBaselines)
 	http.HandleFunc("/api/baselines/calculate", s.handleCalculateBaseline)
 
-	// 告警信息API - 不需要认证，用于Web界面展示
-	http.HandleFunc("/api/alerts", s.handleAlerts)
-	// 分组告警API
-	http.HandleFunc("/api/alert-groups", s.handleAlertGroups)
-
 	// WebSocket 端点
 	http.HandleFunc("/ws", s.handleWebSocket)
 
@@ -241,14 +233,11 @@ func (s *Server) registerRoutes() {
 
 // handleQueryReadings 处理数据查询请求
 func (s *Server) handleQueryReadings(w http.ResponseWriter, r *http.Request) {
-	// 增加HTTP请求计数
-	if s.Monitor != nil {
-		s.Monitor.IncrementHTTPRequests()
-	}
+	s.Monitor.IncrementHTTPRequests()
 
 	w.Header().Set("Content-Type", "application/json")
 
-	// 获取查询参数（deviceName已由中间件格式化）
+	// 获取查询参数
 	deviceName := r.URL.Query().Get("deviceName")
 	startTime := r.URL.Query().Get("startTime")
 	endTime := r.URL.Query().Get("endTime")
@@ -296,10 +285,7 @@ func (s *Server) handleQueryReadings(w http.ResponseWriter, r *http.Request) {
 
 // handleBackup 处理数据备份请求
 func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
-	// 增加HTTP请求计数
-	if s.Monitor != nil {
-		s.Monitor.IncrementHTTPRequests()
-	}
+	s.Monitor.IncrementHTTPRequests()
 
 	w.Header().Set("Content-Type", "application/json")
 
@@ -476,18 +462,12 @@ func handleEdgeXEvent(s *Server, w http.ResponseWriter, event *edgex.EdgeXEvent)
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
-		} else {
-			// 更新设备状态
-			for _, reading := range event.Readings {
-				// 安全地更新设备状态
-				updateDeviceStatus(s.Monitor, event.DeviceName, reading.ResourceName, reading.Value)
-			}
-
-			json.NewEncoder(w).Encode(map[string]string{
-				"status":  "success",
-				"message": fmt.Sprintf("Batch stored %d readings from %s", len(records), event.DeviceName),
-			})
 		}
+
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":  "success",
+			"message": fmt.Sprintf("Batch stored %d readings from %s", len(records), event.DeviceName),
+		})
 	} else {
 		json.NewEncoder(w).Encode(map[string]string{
 			"status":  "success",
@@ -1143,8 +1123,6 @@ func (s *Server) handleTestAlert(w http.ResponseWriter, r *http.Request) {
 		req.Severity = "warning"
 	}
 
-	s.Monitor.RecordError(req.Type, req.Message)
-
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":  "success",
 		"message": "Test alert sent",
@@ -1335,7 +1313,6 @@ func (s *Server) handleSubscriptionStatus(w http.ResponseWriter, r *http.Request
 	currentConfig := configManager.GetConfig()
 
 	status := map[string]interface{}{
-		"connected":      s.Monitor != nil && s.Monitor.IsMQTTConnected(),
 		"broker":         currentConfig.MQTTBroker,
 		"topic":          currentConfig.MQTTTopic,
 		"client_id":      currentConfig.ClientID,
@@ -1604,12 +1581,6 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 
 	metrics := s.Monitor.CollectMetrics()
 
-	// 获取 ResourceMonitor 的真实 CPU 使用率
-	if s.ResourceMonitor != nil {
-		usage := s.ResourceMonitor.GetCurrentUsage()
-		metrics.System.CPUUsage = usage.CPUPercent
-	}
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(metrics)
 }
@@ -1766,164 +1737,6 @@ func (s *Server) handleDeleteSubscriptionTheme(w http.ResponseWriter, r *http.Re
 		"message": "主题删除成功",
 		"topic":   req.Topic,
 	})
-}
-
-// handleDeviceStatus 处理获取设备状态请求
-func (s *Server) handleDeviceStatus(w http.ResponseWriter, r *http.Request) {
-	if s.Monitor != nil {
-		s.Monitor.IncrementHTTPRequests()
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-
-	if s.Monitor == nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Monitor not initialized"})
-		return
-	}
-
-	// 检查设备状态
-	s.Monitor.CheckDeviceStatus()
-
-	// 获取设备状态
-	deviceStatuses := s.Monitor.GetDeviceStatus()
-
-	// 转换为响应格式
-	devices := []map[string]interface{}{}
-	for deviceName, status := range deviceStatuses {
-		devices = append(devices, map[string]interface{}{
-			"deviceName":    deviceName,
-			"isOnline":      status.IsOnline,
-			"lastActive":    status.LastActive,
-			"dataCount":     status.DataCount,
-			"lastDataValue": status.LastDataValue,
-		})
-	}
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":  "success",
-		"devices": devices,
-	})
-}
-
-// handleAlerts 处理获取告警信息请求
-func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
-	if s.Monitor != nil {
-		s.Monitor.IncrementHTTPRequests()
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-
-	if s.Monitor == nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Monitor not initialized"})
-		return
-	}
-
-	// 检查新告警
-	s.Monitor.CheckAlerts()
-
-	// 获取告警信息
-	alerts := s.Monitor.GetAlerts()
-
-	// 转换为响应格式
-	var alertList []map[string]interface{}
-	for _, alert := range alerts {
-		alertList = append(alertList, map[string]interface{}{
-			"type":      alert.Type,
-			"message":   alert.Message,
-			"severity":  alert.Severity,
-			"timestamp": alert.Timestamp,
-			"resolved":  alert.Resolved,
-		})
-	}
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status": "success",
-		"alerts": alertList,
-	})
-}
-
-// handleAlertGroups 处理获取分组告警信息请求
-func (s *Server) handleAlertGroups(w http.ResponseWriter, r *http.Request) {
-	if s.Monitor != nil {
-		s.Monitor.IncrementHTTPRequests()
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-
-	if s.Monitor == nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Monitor not initialized"})
-		return
-	}
-
-	// 检查新告警
-	s.Monitor.CheckAlerts()
-
-	// 获取分组告警信息
-	groups := s.Monitor.GetAlertGroups()
-
-	log.Printf("handleAlertGroups: %d groups returned", len(groups))
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status": "success",
-		"groups": groups,
-	})
-}
-
-// 提取设备类型的辅助函数 (修正版)
-func extractDeviceType(deviceName string) string {
-	for i := len(deviceName) - 1; i >= 0; i-- {
-		if deviceName[i] == '-' {
-			return deviceName[:i]
-		}
-	}
-	// 如果没有找到 '-', 返回原名字或空字符串，取决于你的业务逻辑
-	// 这里返回空字符串，调用方需要处理
-	return ""
-}
-
-// 安全更新设备状态的辅助函数
-func updateDeviceStatus(monitor *monitor.Monitor, deviceName, resourceName string, rawValue interface{}) {
-	// 解析原始值为 float64
-	var parsedVal interface{}
-	switch v := rawValue.(type) {
-	case string:
-		parsedVal = common.ParseValue(v)
-	case float64:
-		parsedVal = v
-	case float32:
-		parsedVal = float64(v)
-	case int64:
-		parsedVal = float64(v)
-	case int32:
-		parsedVal = float64(v)
-	case int:
-		parsedVal = float64(v)
-	default:
-		// 其他类型，转换为字符串后再解析
-		parsedVal = common.ParseValue(fmt.Sprintf("%v", v))
-	}
-
-	if fv, ok := parsedVal.(float64); ok {
-		monitor.UpdateDeviceStatus(deviceName, resourceName, fv)
-	} else {
-		// 尝试转换其他数值类型
-		switch v := parsedVal.(type) {
-		case int64:
-			monitor.UpdateDeviceStatus(deviceName, resourceName, float64(v))
-		case int32:
-			monitor.UpdateDeviceStatus(deviceName, resourceName, float64(v))
-		case int:
-			monitor.UpdateDeviceStatus(deviceName, resourceName, float64(v))
-		case float32:
-			monitor.UpdateDeviceStatus(deviceName, resourceName, float64(v))
-		default:
-			// 非数值类型，不更新或记录日志
-			// log.Printf("Non-numeric value for device %s/%s: %v (type %T)", deviceName, resourceName, parsedVal, parsedVal)
-		}
-	}
 }
 
 // handleTemplates 处理获取模板请求

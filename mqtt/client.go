@@ -35,7 +35,7 @@ func NewClient(cfg *config.Config, monitor *monitor.Monitor,
 	if err != nil {
 		return nil, err
 	}
-	messageProcessor := NewMessageProcessor(monitor)
+	messageProcessor := NewMessageProcessor()
 
 	// 2. 创建 Client
 	c := &Client{

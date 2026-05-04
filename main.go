@@ -81,14 +81,10 @@ func initConfig() (*config.Config, error) {
 
 func initComponents(appConfig *config.Config) (*Components, error) {
 	// 初始化监控
-	monitorInstance := monitor.NewMonitor(appConfig)
+	monitorInstance := monitor.NewMonitor()
 
-	// 启动监控清理任务（定期清理过期设备和告警）
-	monitorInstance.StartCleanupRoutine()
-
-	// 初始化告警通知器
+	// 初始化告警通知器（保留接口但不再连接 Monitor）
 	alertNotifier := alert.NewNotifier(appConfig)
-	monitorInstance.SetNotifier(alertNotifier)
 	if err := alertNotifier.Start(); err != nil {
 		log.Printf("告警通知器启动失败: %v", err)
 	}

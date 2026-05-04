@@ -105,34 +105,24 @@ func (w *BatchWriter) doWrite(records []*map[string]any) {
 		return
 	}
 
-	w.monitor.IncrementDatabaseOperations()                       // 数据库操作次数 +1
-	w.monitor.IncrementTotalRecordsStored(int64(len(records)))    // 总存储记录数 +n
-	w.monitor.IncrementDataStoredBytes(int64(len(records) * 100)) // 存储数据字节数 +n*100
-	// 批量写入 LevelDB数据库
+	w.monitor.IncrementTotalRecordsStored(int64(len(records))) // 总存储记录数 +n
+
 	_, err := database.Table.BatchInsertNoInc(records)
 	if err != nil {
-		w.monitor.RecordError("storage_error", err.Error())
 		log.Printf("Database write failed: %v", err)
 		return
 	}
 
 	w.monitor.IncrementMQTTMessagesProcessed() // MQTT 处理消息数 +1
-	/*
-		每 50 次 flush 调用 debug.FreeOSMemory() 会触发全局 GC STW（Stop The World），影响实时性。
-			count := flushCount.Add(1)
-			if count%50 == 0 { // 内存优化（每 50 次 flush）
-				debug.FreeOSMemory() // 释放未使用的内存回操作系统，防止边缘设备内存泄漏
-			}
-	*/
+
 	if w.broadcaster != nil {
-		// 广播数据给所有 WebSocket 连接的 Web 客户端
 		w.broadcastData("device_data", map[string]any{
 			"deviceName": (*records[0])["deviceName"],
 			"records":    records,
 		})
 	}
-	// 分析数据
-	if w.analyzer.IsEnabled() && len(records) <= 50 { // 仅分析 50 条记录
+
+	if w.analyzer != nil && w.analyzer.IsEnabled() && len(records) <= 50 {
 		w.analyzeData(records, (*records[0])["deviceName"].(string))
 	}
 }
