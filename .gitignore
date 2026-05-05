@@ -39,7 +39,8 @@ build/
 # Environment variables
 .env
 
-
+# Commercial modules (not open source)
+commercial/
 
 # Word documents
 word/

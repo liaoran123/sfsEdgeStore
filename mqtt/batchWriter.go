@@ -1,7 +1,6 @@
 package mqtt
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"sync"
@@ -93,11 +92,11 @@ func (w *BatchWriter) flush() {
 	})
 }
 
-// 写入数据
+// 写入数据，所有数据在这里处理。
 /*
 doWrite() 分发到三个出口：
          ├── 1. database.BatchInsertNoInc()  → 写入数据库
-         ├── 2. broadcastData()                  → 推送到 WebSocket
+         ├── 2. BroadcastData()                  → 推送到 WebSocket
          └── 3. analyzeData()                    → 数据分析
 */
 func (w *BatchWriter) doWrite(records []*map[string]any) {
@@ -105,79 +104,33 @@ func (w *BatchWriter) doWrite(records []*map[string]any) {
 		return
 	}
 
-	w.monitor.IncrementTotalRecordsStored(int64(len(records))) // 总存储记录数 +n
-
-	_, err := database.Table.BatchInsertNoInc(records)
+	// 写入数据库 Insert 批量插入记录
+	insertedCount, err := database.Insert(database.Table, records)
 	if err != nil {
 		log.Printf("Database write failed: %v", err)
 		return
 	}
-
-	w.monitor.IncrementMQTTMessagesProcessed() // MQTT 处理消息数 +1
+	// 检查是否所有记录都成功插入
+	if insertedCount != len(records) {
+		log.Printf("Database write partial: inserted %d records, expected %d", insertedCount, len(records))
+	}
+	w.monitor.IncrementTotalRecordsStored(int64(insertedCount))    // 总存储记录数 +n
+	w.monitor.IncrementMQTTMessagesProcessed(int64(insertedCount)) // MQTT 处理消息数 +n
 
 	if w.broadcaster != nil {
-		w.broadcastData("device_data", map[string]any{
-			"deviceName": (*records[0])["deviceName"],
-			"records":    records,
+		// 广播数据到所有 WebSocket 连接的 Web 客户端
+		w.BroadcastData("device_data", map[string]any{
+			"records": records,
 		})
 	}
-
+	// 数据分析，仅当记录数小于等于 50 时才分析
 	if w.analyzer != nil && w.analyzer.IsEnabled() && len(records) <= 50 {
-		w.analyzeData(records, (*records[0])["deviceName"].(string))
+		// 数据分析后，广播告警到所有 WebSocket 连接的 Web 客户端
+		w.analyzeData(records)
 	}
 }
 
-// 接口是将数据广播给所有 WebSocket 连接的 Web 客户端
-func (w *BatchWriter) broadcastData(dataType string, data any) {
-	if w.broadcaster == nil {
-		return
-	}
-
-	broadcastData := map[string]any{
-		"type":      dataType,
-		"data":      data,
-		"timestamp": time.Now().UnixNano(),
-	}
-
-	jsonData, err := json.Marshal(broadcastData)
-	if err != nil {
-		log.Printf("Failed to marshal broadcast data: %v", err)
-		return
-	}
-
-	w.broadcaster.Broadcast(jsonData)
-}
-
-func (w *BatchWriter) analyzeData(records []*map[string]any, deviceName string) {
-	if !w.analyzer.IsEnabled() {
-		return
-	}
-
-	readingDataMap := make(map[string][]map[string]any, len(records))
-	for _, record := range records {
-		readingName, ok := (*record)["reading"].(string)
-		if !ok {
-			continue
-		}
-		readingDataMap[readingName] = append(readingDataMap[readingName], *record)
-	}
-
-	for readingName, analysisData := range readingDataMap {
-		_, alerts := w.analyzer.Analyze(analysisData, deviceName, readingName)
-
-		if len(alerts) > 0 {
-			for _, alert := range alerts {
-				w.monitor.RecordError(alert.AlertType, alert.Message)
-			}
-
-			w.broadcastData("alerts", map[string]any{
-				"deviceName": deviceName,
-				"alerts":     alerts,
-			})
-		}
-	}
-}
-
+// Stop 停止批量写入层，等待所有待写入记录处理完成
 func (w *BatchWriter) Stop() {
 	close(w.stopChan)
 	w.mu.Lock()

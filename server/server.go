@@ -457,7 +457,7 @@ func handleEdgeXEvent(s *Server, w http.ResponseWriter, event *edgex.EdgeXEvent)
 
 	// 批量存储到sfsDb
 	if len(records) > 0 {
-		_, err := s.Table.BatchInsertNoInc(records)
+		_, err := s.Table.BatchInsertNoInc(records, false)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})

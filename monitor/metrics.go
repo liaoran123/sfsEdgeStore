@@ -25,7 +25,7 @@ func NewMetricsCollector() *MetricsCollector {
 
 // 指标递增方法
 func (c *MetricsCollector) IncrementMQTTMessagesReceived()      { c.mqttReceived.Add(1) }
-func (c *MetricsCollector) IncrementMQTTMessagesProcessed()     { c.mqttProcessed.Add(1) }
+func (c *MetricsCollector) IncrementMQTTMessagesProcessed(n int64) { c.mqttProcessed.Add(n) }
 func (c *MetricsCollector) IncrementMQTTMessagesFiltered()      { c.mqttFiltered.Add(1) }
 func (c *MetricsCollector) IncrementTotalRecordsStored(n int64) { c.totalRecords.Add(n) }
 
