@@ -299,7 +299,7 @@ func (a *Agent) handleGetStatus(requestID string) {
 
 	// 如果有监控实例，添加监控指标
 	if a.monitor != nil {
-		metrics := a.monitor.CollectMetrics()
+		metrics := a.monitor.CollectMetrics(nil)
 		status["metrics"] = metrics
 	}
 

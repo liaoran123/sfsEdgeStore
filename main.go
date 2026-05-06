@@ -10,7 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"sfsEdgeStore/agent"
 	"sfsEdgeStore/alert"
 	"sfsEdgeStore/analyzer"
 	"sfsEdgeStore/auth"
@@ -33,7 +32,6 @@ type Components struct {
 	Monitor         *monitor.Monitor
 	AlertNotifier   *alert.Notifier
 	Analyzer        *analyzer.Analyzer
-	Agent           *agent.Agent
 	Retention       *retention.RetentionManager
 	ResourceMonitor *resource.ResourceMonitor
 	Server          *server.Server
@@ -91,8 +89,6 @@ func initComponents(appConfig *config.Config) (*Components, error) {
 	authManager := auth.NewAuthManager()
 	authManager.StartCleanupTask(24 * time.Hour)
 
-	var agentInstance *agent.Agent
-
 	retentionManager := retention.NewRetentionManager(database.Table, appConfig)
 	if err := retentionManager.Start(); err != nil {
 		log.Printf("数据保留策略管理器启动失败: %v", err)
@@ -118,7 +114,6 @@ func initComponents(appConfig *config.Config) (*Components, error) {
 		Monitor:         monitorInstance,
 		AlertNotifier:   alertNotifier,
 		Analyzer:        analyzerInstance,
-		Agent:           agentInstance,
 		Retention:       retentionManager,
 		ResourceMonitor: resourceMonitor,
 		Server:          serverInstance,
@@ -134,12 +129,6 @@ func startServices(c *Components, appConfig *config.Config) {
 	log.Printf("HTTP端口: %s", appConfig.HTTPPort)
 	log.Println("sfsEdgeStore started successfully")
 
-	if c.Agent != nil {
-		if err := c.Agent.Start(); err != nil {
-			log.Printf("Agent启动失败: %v", err)
-		}
-	}
-
 	if err := c.Server.Start(); err != nil {
 		log.Fatalf("HTTP服务器启动失败: %v", err)
 	}
@@ -150,10 +139,6 @@ func waitForShutdown(c *Components) {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	log.Println("正在关闭服务...")
-
-	if c.Agent != nil {
-		c.Agent.Stop()
-	}
 
 	if c.Retention != nil {
 		c.Retention.Stop()

@@ -8,7 +8,8 @@ type Metrics struct {
 
 // SystemMetrics 系统指标
 type SystemMetrics struct {
-	MemoryUsage float64 `json:"memory_usage"`
+	CPUPercent  float64 `json:"cpu_percent"`
+	MemoryUsage float64 `json:"memory_usage_mb"`
 	Goroutines  int     `json:"goroutines"`
 	Uptime      int64   `json:"uptime_seconds"`
 }

@@ -3,6 +3,7 @@ package mqtt
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -112,7 +113,7 @@ func (w *BatchWriter) doWrite(records []*map[string]any) {
 	}
 	// 检查是否所有记录都成功插入
 	if insertedCount != len(records) {
-		log.Printf("Database write partial: inserted %d records, expected %d", insertedCount, len(records))
+		w.monitor.RecordError("partial_write", "inserted "+strconv.Itoa(insertedCount)+" of "+strconv.Itoa(len(records)))
 	}
 	w.monitor.IncrementTotalRecordsStored(int64(insertedCount))    // 总存储记录数 +n
 	w.monitor.IncrementMQTTMessagesProcessed(int64(insertedCount)) // MQTT 处理消息数 +n

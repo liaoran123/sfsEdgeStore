@@ -1602,7 +1602,17 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	metrics := s.Monitor.CollectMetrics()
+	var resourceData *monitor.ResourceUsageData
+	if s.ResourceMonitor != nil {
+		usage := s.ResourceMonitor.GetCurrentUsage()
+		resourceData = &monitor.ResourceUsageData{
+			MemoryMB:   usage.MemoryMB,
+			CPUPercent: usage.CPUPercent,
+			Goroutines: usage.Goroutines,
+		}
+	}
+
+	metrics := s.Monitor.CollectMetrics(resourceData)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(metrics)
