@@ -192,8 +192,6 @@ func (w *Wizard) detectEnvironment() error {
 		log.Println("✓ Network connectivity detected")
 	} else {
 		log.Println("⚠ No network connectivity detected")
-		// 离线模式配置
-		w.config.EnableDataSync = false
 	}
 
 	return nil
@@ -203,7 +201,6 @@ func (w *Wizard) detectEnvironment() error {
 func (w *Wizard) optimizeConfig() error {
 	log.Println("Optimizing configuration...")
 
-	// 智能默认值优化
 	if w.config.DBPath == "" {
 		w.config.DBPath = "./data"
 		log.Println("✓ Set default database path: ./data")
@@ -214,32 +211,19 @@ func (w *Wizard) optimizeConfig() error {
 		log.Println("✓ Set default HTTP port: 8081")
 	}
 
-	if w.config.DevConfigPath == "" {
-		w.config.DevConfigPath = "./devconfig"
-		log.Println("✓ Set default device config path: ./devconfig")
-	}
-
-	// 安全配置优化（默认关闭以简化初次使用）
 	w.config.MQTTUseTLS = false
 	w.config.HTTPUseTLS = false
 	w.config.DBUseEncryption = false
 	log.Println("✓ Optimized security settings for ease of use")
 
-	// 功能配置优化
 	w.config.EnableRetentionPolicy = false
 	w.config.EnableAlertNotifications = false
 	w.config.EnableResourceMonitoring = true
 	log.Println("✓ Optimized feature settings")
 
-	// 确保必要的目录存在
 	dbDir := filepath.Dir(w.config.DBPath)
 	if err := os.MkdirAll(dbDir, 0755); err != nil {
 		return fmt.Errorf("failed to create database directory: %v", err)
-	}
-
-	devConfigDir := w.config.DevConfigPath
-	if err := os.MkdirAll(devConfigDir, 0755); err != nil {
-		return fmt.Errorf("failed to create device config directory: %v", err)
 	}
 
 	log.Println("✓ Configuration optimization completed")
@@ -318,42 +302,20 @@ func (w *Wizard) validateConfig() error {
 		log.Println("⚠ HTTP port not configured, using default: 8081")
 	}
 
-	// 验证设备配置路径
-	if w.config.DevConfigPath == "" {
-		w.config.DevConfigPath = "./devconfig"
-		log.Println("⚠ Device config path not configured, using default: ./devconfig")
-		// 确保设备配置目录存在
-		if err := os.MkdirAll(w.config.DevConfigPath, 0755); err != nil {
-			log.Printf("Warning: failed to create device config directory: %v", err)
-		}
-	}
-
-	// 验证自动订阅设置
-	if !w.config.AutoSubscribe {
-		// 默认启用自动订阅
-		w.config.AutoSubscribe = true
-		log.Println("⚠ Auto subscribe not enabled, enabling by default")
-	}
-
 	// 验证数据库场景
 	if w.config.DBScenario == "" {
-		w.config.DBScenario = "edge"
-		log.Println("⚠ Database scenario not configured, using default: edge")
+		w.config.DBScenario = "extreme"
+		log.Println("⚠ Database scenario not configured, using default: extreme")
 	}
 
 	// 验证资源监控设置
 	if !w.config.EnableResourceMonitoring {
-		// 默认启用资源监控
 		w.config.EnableResourceMonitoring = true
 		log.Println("⚠ Resource monitoring not enabled, enabling by default")
 	}
 
 	// 验证分析引擎设置
 	if w.config.EnableAnalyzer {
-		// 确保分析引擎配置
-		if w.config.AnalyzerMaxMemory == 0 {
-			w.config.AnalyzerMaxMemory = 10485760 // 10MB
-		}
 		if w.config.AnalyzerMaxTimePerRun == 0 {
 			w.config.AnalyzerMaxTimePerRun = 500 // 500ms
 		}
@@ -361,15 +323,11 @@ func (w *Wizard) validateConfig() error {
 
 	// 验证数据保留策略设置
 	if w.config.EnableRetentionPolicy {
-		// 确保保留策略配置
 		if w.config.RetentionDays == 0 {
 			w.config.RetentionDays = 30 // 30天
 		}
-		if w.config.CleanupInterval == 0 {
-			w.config.CleanupInterval = 24 // 24小时
-		}
 		if w.config.CleanupBatchSize == 0 {
-			w.config.CleanupBatchSize = 1000 // 每批1000条
+			w.config.CleanupBatchSize = 500 // 每批500条
 		}
 	}
 

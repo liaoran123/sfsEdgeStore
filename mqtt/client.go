@@ -93,9 +93,7 @@ func GetTopics(cfg *config.Config) []string {
 	if cfg.MQTTTopic != "" { // 自定义主题，cfg.MQTTTopic保存的是用户自定义的主题列表
 		topics = append(topics, cfg.MQTTTopic)
 	}
-	if cfg.AutoSubscribe { // 自动订阅标准主题。用于减少用户配置
-		topics = append(topics, standardTopics...)
-	}
+	topics = append(topics, standardTopics...) // 始终订阅标准 EdgeX 主题
 	return uniqueTopics(topics)
 }
 

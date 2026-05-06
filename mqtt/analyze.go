@@ -31,7 +31,7 @@ func (w *BatchWriter) analyzeData(records []*map[string]any) {
 	}
 
 	for key, data := range groups {
-		_, alerts := w.analyzer.Analyze(data, key.device, key.reading)
+		alerts := w.analyzer.Analyze(data, key.device, key.reading)
 
 		if len(alerts) > 0 {
 			for _, alert := range alerts {

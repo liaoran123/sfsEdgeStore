@@ -51,11 +51,13 @@ function exportData() {
 }
 
 // Settings Modal
+var currentThresholds = {};
+
 function openSettings() {
     fetch('/api/config/get')
         .then(response => response.json())
         .then(data => {
-            const config = data.config || data;
+            const config = data.data || data.config || data;
             
             const modal = new bootstrap.Modal(document.getElementById('settingsModal'));
             modal.show();
@@ -70,6 +72,10 @@ function openSettings() {
                 document.getElementById('settingMaxMemory').value = config.max_memory_mb || 45;
                 document.getElementById('settingRetentionPolicy').checked = config.enable_retention_policy || false;
                 document.getElementById('settingRetentionDays').value = config.retention_days || 30;
+                document.getElementById('settingEnableAnalyzer').checked = config.enable_analyzer || false;
+
+                currentThresholds = config.analyzer_thresholds || {};
+                renderThresholdTable();
             }, 100);
         })
         .catch(error => {
@@ -87,6 +93,10 @@ function openSettings() {
                 document.getElementById('settingMaxMemory').value = 45;
                 document.getElementById('settingRetentionPolicy').checked = false;
                 document.getElementById('settingRetentionDays').value = 30;
+                document.getElementById('settingEnableAnalyzer').checked = false;
+
+                currentThresholds = {};
+                renderThresholdTable();
             }, 100);
         });
 }
@@ -100,7 +110,9 @@ function saveSettings() {
         enable_resource_monitoring: document.getElementById('settingResourceMonitoring').checked,
         max_memory_mb: parseInt(document.getElementById('settingMaxMemory').value),
         enable_retention_policy: document.getElementById('settingRetentionPolicy').checked,
-        retention_days: parseInt(document.getElementById('settingRetentionDays').value)
+        retention_days: parseInt(document.getElementById('settingRetentionDays').value),
+        enable_analyzer: document.getElementById('settingEnableAnalyzer').checked,
+        analyzer_thresholds: currentThresholds
     };
     
     fetch('/api/config/update', {
@@ -137,8 +149,66 @@ function applyRecommendedSettings() {
     document.getElementById('settingMaxMemory').value = 45;
     document.getElementById('settingRetentionPolicy').checked = true;
     document.getElementById('settingRetentionDays').value = 30;
+    document.getElementById('settingEnableAnalyzer').checked = true;
     
     alert('Recommended settings applied. Please review and click Save & Apply to save.');
+}
+
+// Threshold Management
+function renderThresholdTable() {
+    var tbody = document.getElementById('thresholdTableBody');
+    var noMsg = document.getElementById('noThresholdsMsg');
+    tbody.innerHTML = '';
+    
+    var keys = Object.keys(currentThresholds);
+    if (keys.length === 0) {
+        noMsg.style.display = 'block';
+        return;
+    }
+    
+    noMsg.style.display = 'none';
+    keys.forEach(function(key) {
+        var t = currentThresholds[key];
+        var isDeviceThreshold = key.includes(':');
+        var device = isDeviceThreshold ? key.split(':')[0] : '(default)';
+        var reading = isDeviceThreshold ? key.split(':')[1] : key;
+        
+        var tr = document.createElement('tr');
+        tr.innerHTML = 
+            '<td>' + device + '</td>' +
+            '<td>' + reading + '</td>' +
+            '<td>' + t.min + '</td>' +
+            '<td>' + t.max + '</td>' +
+            '<td><button class="btn btn-sm btn-danger" onclick="deleteThreshold(\'' + key + '\')">Delete</button></td>';
+        tbody.appendChild(tr);
+    });
+}
+
+function addThreshold() {
+    var device = document.getElementById('thresholdDevice').value.trim();
+    var reading = document.getElementById('thresholdReading').value.trim();
+    var min = parseFloat(document.getElementById('thresholdMin').value);
+    var max = parseFloat(document.getElementById('thresholdMax').value);
+    
+    if (!reading || isNaN(min) || isNaN(max)) {
+        alert('Please fill in Reading name, Min and Max values');
+        return;
+    }
+    
+    var key = device ? device + ':' + reading : reading;
+    currentThresholds[key] = { min: min, max: max, device: device };
+    
+    document.getElementById('thresholdDevice').value = '';
+    document.getElementById('thresholdReading').value = '';
+    document.getElementById('thresholdMin').value = '';
+    document.getElementById('thresholdMax').value = '';
+    
+    renderThresholdTable();
+}
+
+function deleteThreshold(key) {
+    delete currentThresholds[key];
+    renderThresholdTable();
 }
 
 // Data Retention

@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	"sfsEdgeStore/config"
@@ -169,37 +168,13 @@ func createTLSConfig(cfg *config.Config) (*tls.Config, error) {
 		InsecureSkipVerify: false,
 	}
 
-	// 配置 CA 证书
-	if cfg.MQTTCACert != "" {
-		caCert, err := os.ReadFile(cfg.MQTTCACert)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read CA cert: %v", err)
-		}
-		caCertPool := x509.NewCertPool()
-		if !caCertPool.AppendCertsFromPEM(caCert) {
-			return nil, fmt.Errorf("failed to add CA cert to pool")
-		}
-		tlsConfig.RootCAs = caCertPool
-		log.Println("TLS: CA certificate loaded successfully")
-	} else {
-		caCertPool, err := x509.SystemCertPool()
-		if err != nil {
-			log.Printf("Warning: Failed to load system cert pool: %v", err)
-			caCertPool = x509.NewCertPool()
-		}
-		tlsConfig.RootCAs = caCertPool
-		log.Println("TLS: Using system default certificate pool")
+	caCertPool, err := x509.SystemCertPool()
+	if err != nil {
+		log.Printf("Warning: Failed to load system cert pool: %v", err)
+		caCertPool = x509.NewCertPool()
 	}
-
-	// 配置客户端证书（双向 TLS）
-	if cfg.MQTTClientCert != "" && cfg.MQTTClientKey != "" {
-		cert, err := tls.LoadX509KeyPair(cfg.MQTTClientCert, cfg.MQTTClientKey)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load client cert: %v", err)
-		}
-		tlsConfig.Certificates = []tls.Certificate{cert}
-		log.Println("TLS: Client certificate loaded successfully (mutual TLS enabled)")
-	}
+	tlsConfig.RootCAs = caCertPool
+	log.Println("TLS: Using system default certificate pool")
 
 	return tlsConfig, nil
 }
@@ -208,24 +183,14 @@ func createTLSConfig(cfg *config.Config) (*tls.Config, error) {
 func performSecurityCheck(cfg *config.Config) {
 	log.Println("Performing security check...")
 
-	// 检查用户名密码认证
 	if cfg.MQTTUsername == "" {
 		log.Println("Security: No username set, using anonymous authentication")
 	} else {
 		log.Println("Security: Username/password authentication enabled")
 	}
 
-	// 检查 TLS 加密
 	if cfg.MQTTUseTLS {
 		log.Println("Security: TLS encryption enabled")
-		if cfg.MQTTCACert != "" {
-			log.Println("Security: Custom CA certificate configured")
-		} else {
-			log.Println("Security: Using system default CA certificates")
-		}
-		if cfg.MQTTClientCert != "" && cfg.MQTTClientKey != "" {
-			log.Println("Security: Mutual TLS authentication enabled")
-		}
 	} else {
 		log.Println("Security: WARNING - TLS encryption disabled, connection is not secure")
 	}

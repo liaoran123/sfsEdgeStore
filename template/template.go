@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"sfsEdgeStore/config"
 
 	"gopkg.in/yaml.v2"
 )
@@ -85,34 +84,6 @@ func (m *Manager) GetTemplate(industry string) (Template, bool) {
 }
 
 // ApplyTemplate 应用模板到配置
-func (m *Manager) ApplyTemplate(industry string, cfg *config.Config) error {
-	template, exists := m.GetTemplate(industry)
-	if !exists {
-		return nil
-	}
-
-	// 应用设备配置
-	if template.Devices != nil {
-		cfg.Devices = template.Devices
-	}
-
-	// 应用告警配置
-	if template.Alerts != nil {
-		cfg.Alerts = template.Alerts
-	}
-
-	// 应用基线配置
-	if template.Baseline != nil {
-		cfg.Baseline = template.Baseline
-	}
-
-	// 应用安全红线
-	if template.SafetyLimits != nil {
-		cfg.SafetyLimits = template.SafetyLimits
-	}
-
-	return nil
-}
 
 // ListIndustries 列出所有可用的行业模板
 func (m *Manager) ListIndustries() []string {

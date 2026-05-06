@@ -654,71 +654,137 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" style="filter: invert(1);"></button>
                 </div>
                 <div class="modal-body" style="background: var(--secondary-color); color: var(--text-color);">
-                    <!-- Connection -->
-                    <div class="mb-4">
-                        <h6 class="text-primary mb-3" data-i18n="connection.settings">🔗 Connection</h6>
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label for="settingMqttBroker" class="form-label" data-i18n="mqtt.broker">MQTT Broker</label>
-                                <input type="text" class="form-control" id="settingMqttBroker" placeholder="tcp://localhost:1883" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
-                            </div>
-                            <div class="col-md-3">
-                                <label for="settingHttpPort" class="form-label" data-i18n="http.port">HTTP Port</label>
-                                <input type="number" class="form-control" id="settingHttpPort" placeholder="8081" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label" data-i18n="note">💡 MQTT Topic</label>
-                                <p class="text-muted form-text" data-i18n="mqtt.topic.note">Managed in Topic Subscription page</p>
-                            </div>
-                        </div>
-                    </div>
-                    <!-- Storage -->
-                    <div class="mb-4">
-                        <h6 class="text-primary mb-3" data-i18n="storage.settings">💾 Storage</h6>
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label for="settingDbPath" class="form-label" data-i18n="db.path">Database Path</label>
-                                <input type="text" class="form-control" id="settingDbPath" placeholder="data/sfs.db" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
-                            </div>
-                            <div class="col-md-3">
-                                <label for="settingDbScenario" class="form-label" data-i18n="db.scenario">DB Scenario</label>
-                                <select class="form-select" id="settingDbScenario" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
-                                    <option value="embedded">Embedded</option>
-                                    <option value="iot">IoT</option>
-                                    <option value="edge">Edge</option>
-                                    <option value="game">Game</option>
-                                    <option value="default">Default</option>
-                                </select>
-                            </div>
-                            <div class="col-md-3">
-                                <label for="settingHttpPort" class="form-label" data-i18n="http.port">HTTP Port</label>
-                                <input type="number" class="form-control" id="settingHttpPort" placeholder="8081" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
-                            </div>
-                        </div>
-                    </div>
-                    <!-- Resource & Retention -->
-                    <div class="mb-3">
-                        <h6 class="text-primary mb-3" data-i18n="resource.retention">📊 Resource & Retention</h6>
-                        <div class="row g-3">
-                            <div class="col-md-3">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="settingResourceMonitoring" style="background-color: rgba(0,0,0,0.2); border-color: var(--tertiary-color);">
-                                    <label class="form-check-label" for="settingResourceMonitoring" data-i18n="resource.monitoring">Resource Monitor</label>
+                    <!-- 标签页导航 -->
+                    <ul class="nav nav-tabs mb-3" id="settingsTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="general-tab" data-bs-toggle="tab" data-bs-target="#general-panel" type="button" role="tab" style="color: var(--text-color); border-color: var(--tertiary-color);" data-i18n="settings.general">General</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="thresholds-tab" data-bs-toggle="tab" data-bs-target="#thresholds-panel" type="button" role="tab" style="color: var(--text-color); border-color: var(--tertiary-color);" data-i18n="settings.thresholds">Thresholds</button>
+                        </li>
+                    </ul>
+
+                    <!-- 标签页内容 -->
+                    <div class="tab-content" id="settingsTabContent">
+                        <!-- General Panel -->
+                        <div class="tab-pane fade show active" id="general-panel" role="tabpanel">
+                            <!-- Connection -->
+                            <div class="mb-4">
+                                <h6 class="text-primary mb-3" data-i18n="connection.settings">🔗 Connection</h6>
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label for="settingMqttBroker" class="form-label" data-i18n="mqtt.broker">MQTT Broker</label>
+                                        <input type="text" class="form-control" id="settingMqttBroker" placeholder="tcp://localhost:1883" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label for="settingHttpPort" class="form-label" data-i18n="http.port">HTTP Port</label>
+                                        <input type="number" class="form-control" id="settingHttpPort" placeholder="8081" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label" data-i18n="note">💡 MQTT Topic</label>
+                                        <p class="text-muted form-text" data-i18n="mqtt.topic.note">Managed in Topic Subscription page</p>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="col-md-3">
-                                <label for="settingMaxMemory" class="form-label" data-i18n="max.memory">Max Memory (MB)</label>
-                                <input type="number" class="form-control" id="settingMaxMemory" min="1" max="4096" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
-                            </div>
-                            <div class="col-md-3">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="settingRetentionPolicy" style="background-color: rgba(0,0,0,0.2); border-color: var(--tertiary-color);">
-                                    <label class="form-check-label" for="settingRetentionPolicy" data-i18n="retention.policy">Retention Policy</label>
+                            <!-- Storage -->
+                            <div class="mb-4">
+                                <h6 class="text-primary mb-3" data-i18n="storage.settings">💾 Storage</h6>
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label for="settingDbPath" class="form-label" data-i18n="db.path">Database Path</label>
+                                        <input type="text" class="form-control" id="settingDbPath" placeholder="data/sfs.db" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="settingDbScenario" class="form-label" data-i18n="db.scenario">DB Scenario</label>
+                                        <select class="form-select" id="settingDbScenario" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
+                                            <option value="embedded">Embedded</option>
+                                            <option value="iot">IoT</option>
+                                            <option value="edge">Edge</option>
+                                            <option value="game">Game</option>
+                                            <option value="default">Default</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="col-md-3">
-                                <label for="settingRetentionDays" class="form-label" data-i18n="retention.days">Retention Days</label>
-                                <input type="number" class="form-control" id="settingRetentionDays" min="1" max="365" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
+                            <!-- Resource & Retention -->
+                            <div class="mb-3">
+                                <h6 class="text-primary mb-3" data-i18n="resource.retention">📊 Resource & Retention</h6>
+                                <div class="row g-3">
+                                    <div class="col-md-3">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="settingResourceMonitoring" style="background-color: rgba(0,0,0,0.2); border-color: var(--tertiary-color);">
+                                            <label class="form-check-label" for="settingResourceMonitoring" data-i18n="resource.monitoring">Resource Monitor</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label for="settingMaxMemory" class="form-label" data-i18n="max.memory">Max Memory (MB)</label>
+                                        <input type="number" class="form-control" id="settingMaxMemory" min="1" max="4096" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="settingRetentionPolicy" style="background-color: rgba(0,0,0,0.2); border-color: var(--tertiary-color);">
+                                            <label class="form-check-label" for="settingRetentionPolicy" data-i18n="retention.policy">Retention Policy</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label for="settingRetentionDays" class="form-label" data-i18n="retention.days">Retention Days</label>
+                                        <input type="number" class="form-control" id="settingRetentionDays" min="1" max="365" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Analyzer -->
+                            <div>
+                                <h6 class="text-primary mb-3" data-i18n="analyzer.enable">🔍 Analyzer</h6>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="settingEnableAnalyzer" style="background-color: rgba(0,0,0,0.2); border-color: var(--tertiary-color);">
+                                    <label class="form-check-label" for="settingEnableAnalyzer" data-i18n="analyzer.enable.label">Enable</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Thresholds Panel -->
+                        <div class="tab-pane fade" id="thresholds-panel" role="tabpanel">
+                            <!-- 添加阈值 -->
+                            <div class="mb-3">
+                                <h6 class="text-primary mb-3" data-i18n="threshold.add">➕ Add Threshold</h6>
+                                <div class="row g-2">
+                                    <div class="col-md-3">
+                                        <input type="text" class="form-control" id="thresholdDevice" placeholder="Device (empty for default)" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <input type="text" class="form-control" id="thresholdReading" placeholder="Reading name" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <input type="number" class="form-control" id="thresholdMin" placeholder="Min" step="any" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <input type="number" class="form-control" id="thresholdMax" placeholder="Max" step="any" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <button class="btn btn-success w-100" onclick="addThreshold()" data-i18n="threshold.add.btn">Add</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 阈值列表 -->
+                            <div>
+                                <h6 class="text-primary mb-3" data-i18n="threshold.list">📋 Threshold List</h6>
+                                <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                                    <table class="table table-sm table-dark table-striped" style="background: rgba(0,0,0,0.2); border-color: var(--tertiary-color);">
+                                        <thead>
+                                            <tr>
+                                                <th data-i18n="threshold.device">Device</th>
+                                                <th data-i18n="threshold.reading">Reading</th>
+                                                <th data-i18n="threshold.min">Min</th>
+                                                <th data-i18n="threshold.max">Max</th>
+                                                <th data-i18n="threshold.action">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="thresholdTableBody">
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div id="noThresholdsMsg" class="text-muted text-center py-3" data-i18n="threshold.empty">No thresholds configured</div>
                             </div>
                         </div>
                     </div>

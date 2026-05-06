@@ -252,6 +252,8 @@ const i18n = {
         
         // Settings Modal
         'settings': '设置',
+        'settings.general': '通用',
+        'settings.thresholds': '阈值',
         'connection.settings': '🔗 连接配置',
         'storage.settings': '💾 存储配置',
         'resource.retention': '📊 资源与保留策略',
@@ -261,6 +263,17 @@ const i18n = {
         'max.memory': '最大内存 (MB)',
         'retention.policy': '保留策略',
         'retention.days': '保留天数',
+        'analyzer.enable': '🔍 分析引擎',
+        'analyzer.enable.label': '启用',
+        'threshold.add': '➕ 添加阈值',
+        'threshold.add.btn': '添加',
+        'threshold.list': '📋 阈值列表',
+        'threshold.device': '设备',
+        'threshold.reading': '读数',
+        'threshold.min': '下限',
+        'threshold.max': '上限',
+        'threshold.action': '操作',
+        'threshold.empty': '未配置阈值',
         'apply.recommended': '✨ 推荐配置',
         'note': '💡 MQTT Topic',
         'mqtt.topic.note': '在「主题订阅」页面管理'
@@ -499,6 +512,8 @@ const i18n = {
         
         // Settings Modal
         'settings': 'Settings',
+        'settings.general': 'General',
+        'settings.thresholds': 'Thresholds',
         'connection.settings': '🔗 Connection',
         'storage.settings': '💾 Storage',
         'resource.retention': '📊 Resource & Retention',
@@ -508,6 +523,17 @@ const i18n = {
         'max.memory': 'Max Memory (MB)',
         'retention.policy': 'Retention Policy',
         'retention.days': 'Retention Days',
+        'analyzer.enable': '🔍 Analyzer',
+        'analyzer.enable.label': 'Enable',
+        'threshold.add': '➕ Add Threshold',
+        'threshold.add.btn': 'Add',
+        'threshold.list': '📋 Threshold List',
+        'threshold.device': 'Device',
+        'threshold.reading': 'Reading',
+        'threshold.min': 'Min',
+        'threshold.max': 'Max',
+        'threshold.action': 'Action',
+        'threshold.empty': 'No thresholds configured',
         'apply.recommended': '✨ Recommended',
         'note': '💡 MQTT Topic',
         'mqtt.topic.note': 'Managed in Topic Subscription page'

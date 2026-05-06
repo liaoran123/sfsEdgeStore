@@ -21,7 +21,6 @@ type ResourceUsage struct {
 	Goroutines      int     `json:"goroutines"`
 	Timestamp       int64   `json:"timestamp"`
 	MemoryLimitMB   float64 `json:"memory_limit_mb"`
-	CPULimitPercent float64 `json:"cpu_limit_percent"`
 }
 
 // ResourceMonitor 资源监控器
@@ -116,9 +115,9 @@ func (rm *ResourceMonitor) checkResources() {
 	rm.checkMemory(usage)
 	rm.checkCPU(usage)
 
-	log.Printf("Resource usage - Memory: %.2f MB (limit: %.2f MB), CPU: %.2f%% (limit: %.2f%%), Goroutines: %d",
+	log.Printf("Resource usage - Memory: %.2f MB (limit: %.2f MB), CPU: %.2f%%, Goroutines: %d",
 		usage.MemoryMB, usage.MemoryLimitMB,
-		usage.CPUPercent, usage.CPULimitPercent,
+		usage.CPUPercent,
 		usage.Goroutines)
 }
 
@@ -134,7 +133,6 @@ func (rm *ResourceMonitor) collectUsage() ResourceUsage {
 		Goroutines:      runtime.NumGoroutine(),
 		Timestamp:       time.Now().Unix(),
 		MemoryLimitMB:   rm.config.MaxMemoryMB,
-		CPULimitPercent: rm.config.MaxCPUPercent,
 	}
 }
 
@@ -227,12 +225,10 @@ func (rm *ResourceMonitor) checkMemory(usage ResourceUsage) {
 
 // checkCPU 检查 CPU 使用
 func (rm *ResourceMonitor) checkCPU(usage ResourceUsage) {
-	if usage.CPUPercent > usage.CPULimitPercent {
-		message := fmt.Sprintf("CPU usage exceeds limit: %.2f%% > %.2f%%",
-			usage.CPUPercent, usage.CPULimitPercent)
+	// CPU 监控仅用于记录，不设置限制
+	if usage.CPUPercent > 80 {
+		message := fmt.Sprintf("High CPU usage: %.2f%%", usage.CPUPercent)
 		log.Printf("[WARNING] %s", message)
-
-		// 尝试调整资源使用
 		rm.adjustResourceUsage()
 	}
 }

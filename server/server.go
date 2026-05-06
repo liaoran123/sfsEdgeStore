@@ -15,7 +15,6 @@ import (
 	"sfsEdgeStore/alert"
 	"sfsEdgeStore/auth"
 	"sfsEdgeStore/backup"
-	"sfsEdgeStore/baseline"
 	"sfsEdgeStore/common"
 	"sfsEdgeStore/config"
 	"sfsEdgeStore/configwizard"
@@ -26,7 +25,6 @@ import (
 	"sfsEdgeStore/pathutil"
 	"sfsEdgeStore/resource"
 	"sfsEdgeStore/retention"
-	"sfsEdgeStore/template"
 	"sfsEdgeStore/ws"
 
 	"github.com/gorilla/websocket"
@@ -45,35 +43,12 @@ type Server struct {
 	ResourceMonitor *resource.ResourceMonitor
 	MQTTClient      mqtt.Client
 	wsManager       *ws.WSManager
-	TemplateManager *template.Manager
-	BaselineManager *baseline.Manager
 }
 
 // NewServer 创建一个新的服务器实例
 func NewServer(table *engine.Table, cfg *config.Config, monitor *monitor.Monitor, retentionMgr *retention.RetentionManager, alertNotifier *alert.Notifier, resourceMonitor *resource.ResourceMonitor) *Server {
 	wsManager := ws.NewWSManager()
 	go wsManager.Run()
-
-	// 初始化模板管理器
-	templateManager := template.NewManager()
-	if err := templateManager.LoadTemplates(); err != nil {
-		log.Printf("Failed to load templates: %v", err)
-	}
-
-	// 初始化基线管理器
-	learningPeriod := 3 // 默认学习期3天
-	if cfg.Baseline != nil {
-		if lp, ok := cfg.Baseline["learning_period"].(int); ok {
-			learningPeriod = lp
-		}
-	}
-	enabled := true
-	if cfg.Baseline != nil {
-		if e, ok := cfg.Baseline["enabled"].(bool); ok {
-			enabled = e
-		}
-	}
-	baselineManager := baseline.NewManager(learningPeriod, enabled)
 
 	return &Server{
 		Table:           table,
@@ -83,8 +58,6 @@ func NewServer(table *engine.Table, cfg *config.Config, monitor *monitor.Monitor
 		AlertNotifier:   alertNotifier,
 		ResourceMonitor: resourceMonitor,
 		wsManager:       wsManager,
-		TemplateManager: templateManager,
-		BaselineManager: baselineManager,
 	}
 }
 
@@ -101,18 +74,9 @@ func (s *Server) Start() error {
 			port = "8081" // 默认端口
 		}
 
-		if s.Config.HTTPUseTLS && s.Config.HTTPCert != "" && s.Config.HTTPKey != "" {
-			// 使用 HTTPS
-			log.Printf("Starting HTTPS server for health checks on port %s", port)
-			if err := http.ListenAndServeTLS(":"+port, s.Config.HTTPCert, s.Config.HTTPKey, nil); err != nil {
-				log.Printf("HTTPS server error: %v", err)
-			}
-		} else {
-			// 使用 HTTP
-			log.Printf("Starting HTTP server for health checks on port %s", port)
-			if err := http.ListenAndServe(":"+port, nil); err != nil {
-				log.Printf("HTTP server error: %v", err)
-			}
+		log.Printf("Starting HTTP server for health checks on port %s", port)
+		if err := http.ListenAndServe(":"+port, nil); err != nil {
+			log.Printf("HTTP server error: %v", err)
 		}
 	}()
 
@@ -201,6 +165,7 @@ func (s *Server) registerRoutes() {
 	// 告警通知API - 不需要认证，简化访问
 	http.HandleFunc("/api/alerts/notifier/status", s.handleAlertNotifierStatus)
 	http.HandleFunc("/api/alerts/test", s.handleTestAlert)
+	http.HandleFunc("/api/alert-groups", s.handleAlertGroups)
 
 	// 配置API - 不需要认证，用于Web界面展示
 	http.HandleFunc("/api/config/get", s.handleGetConfig)
@@ -212,19 +177,14 @@ func (s *Server) registerRoutes() {
 	// 资源监控API - 不需要认证，简化访问
 	http.HandleFunc("/api/resources/status", s.handleResourceStatus)
 
+	// 设备状态API - 不需要认证，用于Web界面展示
+	http.HandleFunc("/api/device-status", s.handleDeviceStatus)
+
 	// 订阅状态API - 不需要认证，用于Web界面展示
 	http.HandleFunc("/api/subscription/status", s.handleSubscriptionStatus)
 	http.HandleFunc("/api/subscription/test", s.handleSubscriptionTest)
 	// 订阅主题管理API - 不需要认证，用于Web界面展示
 	http.HandleFunc("/api/subscription/themes", s.handleSubscriptionThemes)
-
-	// 模板相关API - 不需要认证，用于Web界面展示
-	http.HandleFunc("/api/templates", s.handleTemplates)
-	http.HandleFunc("/api/templates/apply", s.handleApplyTemplate)
-
-	// 基线相关API - 不需要认证，用于Web界面展示
-	http.HandleFunc("/api/baselines", s.handleBaselines)
-	http.HandleFunc("/api/baselines/calculate", s.handleCalculateBaseline)
 
 	// WebSocket 端点
 	http.HandleFunc("/ws", s.handleWebSocket)
@@ -1248,13 +1208,11 @@ func (s *Server) handleOneClickConfig(w http.ResponseWriter, r *http.Request) {
 
 	// 应用智能默认值
 	smartConfig := &config.Config{
-		DBPath:        "./data",
-		MQTTBroker:    "tcp://localhost:1883",
-		MQTTTopic:     "edgex/events/#",
-		ClientID:      config.GenerateClientID(),
-		HTTPPort:      "8081",
-		DevConfigPath: "./devconfig",
-		AutoSubscribe: true,
+		DBPath:     "./data",
+		MQTTBroker: "tcp://localhost:1883",
+		MQTTTopic:  "edgex/events/#",
+		ClientID:   config.GenerateClientID(),
+		HTTPPort:   "8081",
 		// 智能默认值（简化初次使用）
 		MQTTUseTLS:               false,
 		HTTPUseTLS:               false,
@@ -1263,7 +1221,7 @@ func (s *Server) handleOneClickConfig(w http.ResponseWriter, r *http.Request) {
 		EnableRetentionPolicy:    false,
 		EnableAlertNotifications: false,
 		EnableResourceMonitoring: true,
-		DBScenario:               config.ScenarioEdge,
+		DBScenario:               config.ScenarioExtreme,
 	}
 
 	// 保存智能配置
@@ -1301,6 +1259,78 @@ func (s *Server) handleResourceStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleDeviceStatus(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor != nil {
+		s.Monitor.IncrementHTTPRequests()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	records, err := database.QueryRecords(database.Table, "", "", "", false)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": err.Error()})
+		return
+	}
+	defer records.Release()
+
+	deviceMap := make(map[string]*map[string]interface{})
+	for _, record := range records {
+		deviceName, ok := record["deviceName"].(string)
+		if !ok {
+			continue
+		}
+
+		if _, exists := deviceMap[deviceName]; !exists {
+			deviceMap[deviceName] = &map[string]interface{}{
+				"deviceName": deviceName,
+				"isOnline":   false,
+				"lastActive": record["timestamp"],
+				"dataCount":  1,
+			}
+		} else {
+			(*deviceMap[deviceName])["dataCount"] = (*deviceMap[deviceName])["dataCount"].(int) + 1
+			ts := record["timestamp"].(int64)
+			lastActive := (*deviceMap[deviceName])["lastActive"].(int64)
+			if ts > lastActive {
+				(*deviceMap[deviceName])["lastActive"] = ts
+			}
+		}
+	}
+
+	now := time.Now().UnixNano()
+	offlineThreshold := 5 * time.Minute
+	for _, device := range deviceMap {
+		lastActive := (*device)["lastActive"].(int64)
+		if now-lastActive < offlineThreshold.Nanoseconds() {
+			(*device)["isOnline"] = true
+		}
+	}
+
+	var devices []map[string]interface{}
+	for _, device := range deviceMap {
+		devices = append(devices, *device)
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "success",
+		"devices": devices,
+	})
+}
+
+func (s *Server) handleAlertGroups(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor != nil {
+		s.Monitor.IncrementHTTPRequests()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "success",
+		"groups": []map[string]interface{}{},
+	})
+}
+
 // handleSubscriptionStatus 处理获取订阅状态请求
 func (s *Server) handleSubscriptionStatus(w http.ResponseWriter, r *http.Request) {
 	if s.Monitor != nil {
@@ -1318,8 +1348,6 @@ func (s *Server) handleSubscriptionStatus(w http.ResponseWriter, r *http.Request
 		"client_id":      currentConfig.ClientID,
 		"use_tls":        currentConfig.MQTTUseTLS,
 		"username":       currentConfig.MQTTUsername,
-		"ca_cert":        currentConfig.MQTTCACert != "",
-		"client_cert":    currentConfig.MQTTClientCert != "",
 		"auto_subscribe": true,
 		"edgex_version":  "latest",
 	}
@@ -1518,16 +1546,12 @@ func (s *Server) handleMQTTConfigUpdate(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var mqttConfig struct {
-		MqttBroker        string `json:"mqtt_broker"`
-		MqttTopic         string `json:"mqtt_topic"`
-		ClientID          string `json:"client_id"`
-		MqttUseTls        bool   `json:"mqtt_use_tls"`
-		MqttCaCert        string `json:"mqtt_ca_cert"`
-		MqttClientCert    string `json:"mqtt_client_cert"`
-		MqttClientKey     string `json:"mqtt_client_key"`
-		AutoSubscribe     bool   `json:"autoSubscribe"`
-		ConnectionTimeout int    `json:"connectionTimeout"`
-		KeepAlive         int    `json:"keepAlive"`
+		MqttBroker   string `json:"mqtt_broker"`
+		MqttTopic    string `json:"mqtt_topic"`
+		ClientID     string `json:"client_id"`
+		MqttUseTls   bool   `json:"mqtt_use_tls"`
+		MqttUsername string `json:"mqtt_username"`
+		MqttPassword string `json:"mqtt_password"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&mqttConfig); err != nil {
@@ -1550,13 +1574,12 @@ func (s *Server) handleMQTTConfigUpdate(w http.ResponseWriter, r *http.Request) 
 	currentConfig.MQTTTopic = mqttConfig.MqttTopic
 	currentConfig.ClientID = mqttConfig.ClientID
 	currentConfig.MQTTUseTLS = mqttConfig.MqttUseTls
-	currentConfig.MQTTCACert = mqttConfig.MqttCaCert
-	currentConfig.MQTTClientCert = mqttConfig.MqttClientCert
-	currentConfig.MQTTClientKey = mqttConfig.MqttClientKey
-	currentConfig.AutoSubscribe = mqttConfig.AutoSubscribe
-	// 更新连接超时和保持连接时间
-	currentConfig.ConnectionTimeout = mqttConfig.ConnectionTimeout
-	currentConfig.KeepAlive = mqttConfig.KeepAlive
+	if mqttConfig.MqttUsername != "" {
+		currentConfig.MQTTUsername = mqttConfig.MqttUsername
+	}
+	if mqttConfig.MqttPassword != "" {
+		currentConfig.MQTTPassword = mqttConfig.MqttPassword
+	}
 
 	// 保存更新后的配置
 	if err := configManager.UpdateConfig(currentConfig); err != nil {
@@ -1736,131 +1759,6 @@ func (s *Server) handleDeleteSubscriptionTheme(w http.ResponseWriter, r *http.Re
 		"status":  "success",
 		"message": "主题删除成功",
 		"topic":   req.Topic,
-	})
-}
-
-// handleTemplates 处理获取模板请求
-func (s *Server) handleTemplates(w http.ResponseWriter, r *http.Request) {
-	if s.Monitor != nil {
-		s.Monitor.IncrementHTTPRequests()
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-
-	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
-		return
-	}
-
-	// 获取所有行业模板
-	industries := s.TemplateManager.ListIndustries()
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":     "success",
-		"industries": industries,
-	})
-}
-
-// handleApplyTemplate 处理应用模板请求
-func (s *Server) handleApplyTemplate(w http.ResponseWriter, r *http.Request) {
-	if s.Monitor != nil {
-		s.Monitor.IncrementHTTPRequests()
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
-		return
-	}
-
-	// 解析请求
-	var req struct {
-		Industry string `json:"industry"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request body"})
-		return
-	}
-
-	// 应用模板
-	if err := s.TemplateManager.ApplyTemplate(req.Industry, s.Config); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		return
-	}
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":   "success",
-		"message":  "Template applied successfully",
-		"industry": req.Industry,
-	})
-}
-
-// handleBaselines 处理获取基线请求
-func (s *Server) handleBaselines(w http.ResponseWriter, r *http.Request) {
-	if s.Monitor != nil {
-		s.Monitor.IncrementHTTPRequests()
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-
-	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
-		return
-	}
-
-	// 获取所有基线
-	baselines := s.BaselineManager.ListBaselines()
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":    "success",
-		"baselines": baselines,
-	})
-}
-
-// handleCalculateBaseline 处理计算基线请求
-func (s *Server) handleCalculateBaseline(w http.ResponseWriter, r *http.Request) {
-	if s.Monitor != nil {
-		s.Monitor.IncrementHTTPRequests()
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
-		return
-	}
-
-	// 解析请求
-	var req struct {
-		DeviceName  string `json:"deviceName"`
-		ReadingName string `json:"readingName"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request body"})
-		return
-	}
-
-	// 计算基线
-	baseline, err := s.BaselineManager.CalculateBaseline(req.DeviceName, req.ReadingName)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		return
-	}
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":   "success",
-		"baseline": baseline,
 	})
 }
 

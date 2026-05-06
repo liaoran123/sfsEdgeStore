@@ -4,8 +4,6 @@ import (
 	"encoding/base64"
 	"strconv"
 	"strings"
-
-	"sfsEdgeStore/config"
 )
 
 // ParseValue 根据 value 的内容自动判断类型并进行相应的转换
@@ -38,18 +36,12 @@ func ParseValue(value string) any {
 // FormatDeviceName 格式化设备名称，确保长度为配置的最大长度
 // 如果长度超过最大长度，则截断；如果不足最大长度，则用空格补全
 func FormatDeviceName(deviceName string) string {
-	maxLen := 64
-	if cfg := config.GetConfigManager().GetConfig(); cfg != nil && cfg.DeviceNameMaxLength > 0 {
-		maxLen = cfg.DeviceNameMaxLength
-	}
-
+	const maxLen = 32
 	if len(deviceName) > maxLen {
 		return deviceName[:maxLen]
 	}
-
 	if len(deviceName) < maxLen {
 		return deviceName + strings.Repeat(" ", maxLen-len(deviceName))
 	}
-
 	return deviceName
 }

@@ -38,7 +38,7 @@ func (rm *RetentionManager) Start() error {
 
 	rm.isRunning = true
 	go rm.cleanupLoop()
-	log.Printf("Retention manager started with retention days: %d, cleanup interval: %d hours", rm.config.RetentionDays, rm.config.CleanupInterval)
+	log.Printf("Retention manager started with retention days: %d", rm.config.RetentionDays)
 	return nil
 }
 
@@ -52,7 +52,7 @@ func (rm *RetentionManager) Stop() {
 }
 
 func (rm *RetentionManager) cleanupLoop() {
-	interval := time.Duration(rm.config.CleanupInterval) * time.Hour
+	interval := 24 * time.Hour // 默认 24 小时检查一次
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -137,7 +137,6 @@ func (rm *RetentionManager) GetRetentionStatus() map[string]any {
 	return map[string]any{
 		"enabled":            latestConfig.EnableRetentionPolicy,
 		"retention_days":     latestConfig.RetentionDays,
-		"cleanup_interval":   latestConfig.CleanupInterval,
 		"cleanup_batch_size": latestConfig.CleanupBatchSize,
 		"is_running":         rm.isRunning,
 	}

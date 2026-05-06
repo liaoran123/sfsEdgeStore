@@ -1,11 +1,9 @@
 package alert
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
 	"time"
 
 	"sfsEdgeStore/common"
@@ -49,22 +47,18 @@ func (n *Notifier) Start() error {
 		return nil
 	}
 
-	if len(n.config.AlertNotificationChannels) == 0 {
-		log.Println("No alert notification channels configured")
+	if len(n.config.AlertMQTTTopic) == 0 {
+		log.Println("No alert MQTT topic configured")
 		return nil
 	}
 
-	for _, channel := range n.config.AlertNotificationChannels {
-		if channel == "mqtt" {
-			if err := n.initMQTTClient(); err != nil {
-				log.Printf("Failed to initialize MQTT client: %v", err)
-			}
-		}
+	if err := n.initMQTTClient(); err != nil {
+		log.Printf("Failed to initialize MQTT client: %v", err)
 	}
 
 	n.isRunning = true
 	go n.notificationLoop()
-	log.Printf("Alert notifier started with channels: %v", n.config.AlertNotificationChannels)
+	log.Printf("Alert notifier started with topic: %s", n.config.AlertMQTTTopic)
 	return nil
 }
 
@@ -129,16 +123,8 @@ func (n *Notifier) sendToAllChannels(alert common.Alert) {
 		Source:    n.config.ClientID,
 	}
 
-	for _, channel := range n.config.AlertNotificationChannels {
-		switch channel {
-		case "mqtt":
-			n.sendToMQTT(notification)
-		case "webhook":
-			n.sendToWebhook(notification)
-		case "log":
-			n.sendToLog(notification)
-		}
-	}
+	n.sendToMQTT(notification)
+	n.sendToLog(notification)
 }
 
 func (n *Notifier) initMQTTClient() error {
@@ -194,29 +180,6 @@ func (n *Notifier) sendToMQTT(notification AlertNotification) {
 	}
 }
 
-func (n *Notifier) sendToWebhook(notification AlertNotification) {
-	if n.config.AlertWebhookURL == "" {
-		return
-	}
-
-	payload, err := json.Marshal(notification)
-	if err != nil {
-		log.Printf("Failed to marshal alert for webhook: %v", err)
-		return
-	}
-
-	resp, err := http.Post(n.config.AlertWebhookURL, "application/json", bytes.NewBuffer(payload))
-	if err != nil {
-		log.Printf("Failed to send alert to webhook: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		log.Printf("Webhook returned non-success status: %d", resp.StatusCode)
-	}
-}
-
 func (n *Notifier) sendToLog(notification AlertNotification) {
 	log.Printf("[ALERT] [%s] [%s] %s (from: %s, at: %v)",
 		notification.Severity,
@@ -228,11 +191,9 @@ func (n *Notifier) sendToLog(notification AlertNotification) {
 
 func (n *Notifier) GetNotifierStatus() map[string]any {
 	return map[string]any{
-		"enabled":            n.config.EnableAlertNotifications,
-		"channels":           n.config.AlertNotificationChannels,
-		"min_severity":       n.config.AlertMinSeverity,
-		"mqtt_topic":         n.config.AlertMQTTTopic,
-		"webhook_url_configured": n.config.AlertWebhookURL != "",
-		"is_running":         n.isRunning,
+		"enabled":      n.config.EnableAlertNotifications,
+		"min_severity": n.config.AlertMinSeverity,
+		"mqtt_topic":   n.config.AlertMQTTTopic,
+		"is_running":   n.isRunning,
 	}
 }
