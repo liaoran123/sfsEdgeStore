@@ -4,7 +4,6 @@ import (
 	"log"
 
 	"sfsEdgeStore/analyzer"
-	"sfsEdgeStore/broadcast"
 	"sfsEdgeStore/config"
 	"sfsEdgeStore/edgex"
 	"sfsEdgeStore/monitor"
@@ -27,11 +26,10 @@ type Client struct {
 }
 
 // NewClient 创建统一客户端
-func NewClient(cfg *config.Config, monitor *monitor.Monitor,
-	broadcaster broadcast.Broadcaster, analyzer *analyzer.Analyzer) (*Client, error) {
+func NewClient(cfg *config.Config, monitor *monitor.Monitor, analyzer *analyzer.Analyzer) (*Client, error) {
 
 	// 1. 创建各组件
-	batchWriter, err := NewBatchWriter(monitor, broadcaster, analyzer)
+	batchWriter, err := NewBatchWriter(monitor, analyzer)
 	if err != nil {
 		return nil, err
 	}
@@ -51,6 +49,11 @@ func NewClient(cfg *config.Config, monitor *monitor.Monitor,
 	c.mqttClient = mqttClient
 
 	return c, nil
+}
+
+// BroadcastChan 返回广播通道，由 Server 直接监听
+func (c *Client) BroadcastChan() <-chan *BroadcastMessage {
+	return c.batchWriter.GetBroadcastChan()
 }
 
 // handleMessage 消息处理管道，接收所有 MQTT 消息，解析并处理事件

@@ -1,55 +1,46 @@
 package mqtt
 
 import (
-	"fmt"
 	"log"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"sfsEdgeStore/analyzer"
-	"sfsEdgeStore/broadcast"
 	"sfsEdgeStore/database"
 	"sfsEdgeStore/monitor"
 	"sfsEdgeStore/pool"
 )
 
-var flushCount atomic.Int64
-
-// BatchWriter 批量写入层 - 只负责批量缓冲、并发写入
-// LevelDB 已保证持久化，无需额外的 dataQueue
 type BatchWriter struct {
-	writePool   *pool.Pool
-	monitor     *monitor.Monitor
-	broadcaster broadcast.Broadcaster
-	analyzer    *analyzer.Analyzer
+	writePool *pool.Pool         // 写入任务池
+	monitor   *monitor.Monitor   // 监控器
+	analyzer  *analyzer.Analyzer // 分析器
 
-	mu             sync.Mutex
-	pendingRecords []*map[string]any
-	lastBatchTime  time.Time
-	stopChan       chan struct{}
+	mu             sync.Mutex             // 互斥锁，保护 pendingRecords 访问安全
+	pendingRecords []*map[string]any      // 待写入记录缓冲区
+	lastBatchTime  time.Time              // 上次写入时间
+	stopChan       chan struct{}          // 用于停止 flushLoop() 定时写入协程。
+	broadcastChan  chan *BroadcastMessage // 广播通道：设备数据 + 告警 + 其他信息。所有信息的通道。
 }
 
-func NewBatchWriter(monitor *monitor.Monitor, broadcaster broadcast.Broadcaster, analyzer *analyzer.Analyzer) (*BatchWriter, error) {
-	if monitor == nil {
-		return nil, fmt.Errorf("monitor cannot be nil")
-	}
-	if analyzer == nil {
-		return nil, fmt.Errorf("analyzer cannot be nil")
-	}
-
+func NewBatchWriter(monitor *monitor.Monitor, analyzer *analyzer.Analyzer) (*BatchWriter, error) {
 	w := &BatchWriter{
-		writePool:      pool.NewPoolForIO(), // 并发写入任务池，固定协程数、复用、自带背压控制
+		writePool:      pool.NewPoolForIO(),
 		monitor:        monitor,
-		broadcaster:    broadcaster,
 		analyzer:       analyzer,
 		pendingRecords: make([]*map[string]any, 0, batchSize),
 		lastBatchTime:  time.Now(),
 		stopChan:       make(chan struct{}),
+		broadcastChan:  make(chan *BroadcastMessage, 64),
 	}
 	go w.flushLoop()
 	return w, nil
+}
+
+// GetBroadcastChan 返回告警广播通道
+func (w *BatchWriter) GetBroadcastChan() <-chan *BroadcastMessage {
+	return w.broadcastChan
 }
 
 // 定时器写入循环
@@ -65,7 +56,7 @@ func (w *BatchWriter) flushLoop() {
 				w.flush()
 			}
 			w.mu.Unlock()
-		case <-w.stopChan:
+		case <-w.stopChan: // ← 收到关闭信号，退出协程。程序退出时需要通知它停止，否则会变成 goroutine 泄漏
 			return
 		}
 	}
@@ -85,6 +76,7 @@ func (w *BatchWriter) Add(records []*map[string]any) {
 // 写入缓冲区数据
 func (w *BatchWriter) flush() {
 	records := w.pendingRecords
+	// 交换缓冲区，避免在写入过程中被修改
 	w.pendingRecords = make([]*map[string]any, 0, cap(records))
 	w.lastBatchTime = time.Now()
 
@@ -95,10 +87,9 @@ func (w *BatchWriter) flush() {
 
 // 写入数据，所有数据在这里处理。
 /*
-doWrite() 分发到三个出口：
+doWrite() 分发到两个出口：
          ├── 1. database.BatchInsertNoInc()  → 写入数据库
-         ├── 2. BroadcastData()                  → 推送到 WebSocket
-         └── 3. analyzeData()                    → 数据分析
+         └── 2. analyzeData()                → 数据分析，告警推入 BroadcastChan
 */
 func (w *BatchWriter) doWrite(records []*map[string]any) {
 	if len(records) == 0 {
@@ -108,7 +99,7 @@ func (w *BatchWriter) doWrite(records []*map[string]any) {
 	// 写入数据库 Insert 批量插入记录
 	insertedCount, err := database.Insert(database.Table, records)
 	if err != nil {
-		log.Printf("Database write failed: %v", err)
+		w.monitor.RecordError("db_write_failed", err.Error())
 		return
 	}
 	// 检查是否所有记录都成功插入
@@ -118,15 +109,11 @@ func (w *BatchWriter) doWrite(records []*map[string]any) {
 	w.monitor.IncrementTotalRecordsStored(int64(insertedCount))    // 总存储记录数 +n
 	w.monitor.IncrementMQTTMessagesProcessed(int64(insertedCount)) // MQTT 处理消息数 +n
 
-	if w.broadcaster != nil {
-		// 广播数据到所有 WebSocket 连接的 Web 客户端
-		w.BroadcastData("device_data", map[string]any{
-			"records": records,
-		})
-	}
+	// 广播实时数据到 Web 端
+	NewBroadcastMessage(w.broadcastChan, "device_data", map[string]any{"records": records})
+
 	// 数据分析，仅当记录数小于等于 50 时才分析
 	if w.analyzer != nil && w.analyzer.IsEnabled() && len(records) <= 50 {
-		// 数据分析后，广播告警到所有 WebSocket 连接的 Web 客户端
 		w.analyzeData(records)
 	}
 }

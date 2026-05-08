@@ -16,8 +16,10 @@ type SystemMetrics struct {
 
 // ApplicationMetrics 应用指标
 type ApplicationMetrics struct {
-	MQTTMessagesReceived  int64 `json:"mqtt_messages_received"`
-	MQTTMessagesProcessed int64 `json:"mqtt_messages_processed"`
-	MQTTMessagesFiltered  int64 `json:"mqtt_messages_filtered"`
-	TotalRecordsStored    int64 `json:"total_records_stored"`
+	MQTTMessagesReceived  int64            `json:"mqtt_messages_received"`
+	MQTTMessagesProcessed int64            `json:"mqtt_messages_processed"`
+	MQTTMessagesFiltered  int64            `json:"mqtt_messages_filtered"`
+	TotalRecordsStored    int64            `json:"total_records_stored"`
+	ErrorCount            int64            `json:"error_count"`
+	ErrorByType           map[string]int64 `json:"error_by_type"`
 }

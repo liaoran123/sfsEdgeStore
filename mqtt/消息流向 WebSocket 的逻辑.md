@@ -1,50 +1,67 @@
+## 消息流向 WebSocket 的逻辑
 
-
-## 重构后的完整流程
+## 完整流程
 
 ```
 MQTT 消息到达
     ↓
 mqtt.MQTTClient.onMessage (mqtt.go)
     ↓
-MessageProcessor.Handler (messageProcessor.go)
+Client.handleMessage (client.go)
     ↓
-解析消息 → batchWriter.Enqueue() (batchWriter.go:81-84)
+MessageProcessor.Handler (messageProcessor.go) → 解析消息
     ↓
-批量写入 LevelDB (batchWriter.go:97)
+BatchWriter.Add() (batchWriter.go) → 放入缓冲区
     ↓
-[关键] broadcastData() (batchWriter.go:112-117)
+flushLoop() 定时触发 doWrite()
     ↓
-broadcaster.Broadcast() (batchWriter.go:153-171)
+doWrite() 分发到三个出口：
+    ├── 写入 LevelDB (database.Insert)
+    ├── NewBroadcastMessage("device_data") → broadcastChan
+    └── analyzeData() → 分析告警 → NewBroadcastMessage("alerts") → broadcastChan
     ↓
-ws.WSManager.Broadcast()
+Server.SetBroadcastChan() 监听 channel (server.go)
     ↓
-ws.WSManager.broadcast channel
+Server.broadcastLoop() → msg.MarshalJSON()
     ↓
-遍历 clients → client.WriteMessage()
+Server.Broadcast() → wsManager.Broadcast()
+    ↓
+wsManager.Run() 遍历 clients → conn.WriteMessage()
     ↓
 WebSocket 前端收到！
 ```
+
+## 广播消息类型
+
+| 类型 | 触发点 | 数据内容 |
+|------|--------|----------|
+| `device_data` | 写入数据库后 | 实时设备记录 |
+| `alerts` | analyzeData() 分析后 | 告警列表 |
 
 ## 代码对应
 
 | 位置 | 代码 |
 |------|------|
-| 1 | `mqtt/client.go:29` → 创建 `BatchWriter`，传入 `broadcaster` |
-| 2 | `mqtt/batchWriter.go:81` → 提交到 `writePool` |
-| 3 | `mqtt/batchWriter.go:97` → 写入 LevelDB |
-| 4 | `mqtt/batchWriter.go:112` → `if w.broadcaster != nil` → 广播数据 |
-| 5 | `mqtt/batchWriter.go:153` → `broadcastData()` 函数 |
+| `mqtt/client.go:55` | `BroadcastChan()` 返回广播通道 |
+| `mqtt/batchWriter.go:113` | `NewBroadcastMessage()` 广播实时数据 |
+| `mqtt/analyze.go:38` | `NewBroadcastMessage()` 广播告警数据 |
+| `mqtt/broadcast.go:55` | `NewBroadcastMessage()` 辅助函数 |
+| `mqtt/broadcast.go:45` | `PutTo()` 推入通道，满时静默丢弃 |
+| `server/server.go:61` | `SetBroadcastChan()` 启动监听 |
+| `server/server.go:66` | `broadcastLoop()` 读取通道并广播 |
+| `server/ws_manager.go:30` | `Run()` 单协程事件循环 |
 
-## 和原 `core/mqtt/client.go` 对比
+## 对象池管理
 
-| 部分 | 原代码 | 新代码 |
-|------|--------|--------|
-| **广播逻辑** | `core/mqtt/messageHandler.go:174` | `mqtt/batchWriter.go:112` |
-| **广播函数** | `c.broadcastData()` | `w.broadcastData()` |
-| **封装** | 都在一个大 Client 里 | 拆分为三个组件 |
-| **功能** | ✅ 一样 | ✅ 一样 |
+| 阶段 | 释放方式 |
+|------|----------|
+| 通道满时 | `PutTo()` 内部 `PutBroadcastMessage()` |
+| 广播成功 | `broadcastLoop()` → `PutBroadcastMessage()` |
+| Marshal 失败 | `broadcastLoop()` → `PutBroadcastMessage()` |
 
 ## 结论
 
-重构后**消息流向 WebSocket 的功能完全保留**，只是代码更清晰、职责更单一！
+消息流向 WebSocket 的功能完整保留，职责清晰：
+- **BatchWriter**：写库 + 产生广播消息放入 channel
+- **mqtt.Client**：暴露 channel，不处理广播逻辑
+- **Server**：直接监听 channel → 推送到 WebSocket

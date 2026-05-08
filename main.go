@@ -101,10 +101,12 @@ func initComponents(appConfig *config.Config) (*Components, error) {
 
 	serverInstance := server.NewServer(database.Table, appConfig, monitorInstance, retentionManager, alertNotifier, resourceMonitor)
 
-	mqttClient, err := mqtt.NewClient(appConfig, monitorInstance, serverInstance, analyzerInstance)
+	mqttClient, err := mqtt.NewClient(appConfig, monitorInstance, analyzerInstance)
 	if err != nil {
 		log.Printf("MQTT客户端初始化失败: %v", err)
 	} else {
+		// 启动广播监听通道
+		serverInstance.StartBroadcast(mqttClient.BroadcastChan())
 		if err := mqttClient.Subscribe(mqtt.GetTopics(appConfig)); err != nil {
 			log.Printf("MQTT订阅失败: %v", err)
 		}

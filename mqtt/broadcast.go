@@ -2,7 +2,6 @@ package mqtt
 
 import (
 	"encoding/json"
-	"log"
 	"sync"
 	"time"
 )
@@ -43,22 +42,27 @@ func (m *BroadcastMessage) MarshalJSON() ([]byte, error) {
 	return json.Marshal(m)
 }
 
-// BroadcastData 广播数据给所有 WebSocket 客户端
-func (w *BatchWriter) BroadcastData(dataType string, data any) {
-	if w.broadcaster == nil {
-		return
+// PutTo 将消息推入广播通道，通道满时静默丢弃。
+// 通过 通道 broadcastLoop 进行生成和消费消息。
+// broadcastLoop 传递信息机制：从通道读取消息，序列化后调用外部传入的 broadcast(jsonData) 函数，推送到 WebSocket 客户端。
+/*
+完整流程：
+1. batchWriter.go:113 或 analyze.go:38 → 把 BroadcastMessage 推入 broadcastChan
+2. client.go:61 → broadcastLoop 从通道读取消息
+3. 序列化后调用外部传入的 broadcast(jsonData) 函数，推送到 WebSocket 客户端
+*/
+func (m *BroadcastMessage) PutTo(ch chan *BroadcastMessage) {
+	select {
+	case ch <- m: // ← 尝试将消息推入通道，若通道满则静默丢弃。生产者模式下，消息丢失风险小。
+	default:
+		PutBroadcastMessage(m)
 	}
-	msg := GetBroadcastMessage() // 从对象池获取消息对象，并保证数据干净
-	msg.Type = dataType
+}
+
+// NewBroadcastMessage 创建并推送消息到通道
+func NewBroadcastMessage(ch chan *BroadcastMessage, msgType string, data any) {
+	msg := GetBroadcastMessage()
+	msg.Type = msgType
 	msg.Data = data
-
-	defer PutBroadcastMessage(msg) // 放回对象池，确保数据干净
-
-	jsonData, err := msg.MarshalJSON()
-	if err != nil {
-		log.Printf("Failed to marshal broadcast data: %v", err)
-		return
-	}
-	// 广播数据到所有 WebSocket 连接的 Web 客户端
-	w.broadcaster.Broadcast(jsonData)
+	msg.PutTo(ch)
 }

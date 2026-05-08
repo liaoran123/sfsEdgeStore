@@ -9,6 +9,19 @@ import (
 	"time"
 )
 
+// ErrorCounters 按类型分类的错误计数器（预定义，无锁设计）
+type ErrorCounters struct {
+	DBWriteFailed atomic.Int64 // 数据库写入失败
+	PartialWrite  atomic.Int64 // 部分写入
+	Memory        atomic.Int64 // 内存相关
+	Database      atomic.Int64 // 数据库连接
+	Restart       atomic.Int64 // 服务重启
+	Rule          atomic.Int64 // 规则执行
+	Script        atomic.Int64 // 脚本执行
+	Storage       atomic.Int64 // 存储相关
+	Other         atomic.Int64 // 其他/备用
+}
+
 // Monitor 监控管理器（合并 MetricsCollector 功能）
 type Monitor struct {
 	startTime     time.Time    // 启动时间
@@ -18,6 +31,8 @@ type Monitor struct {
 	totalRecords  atomic.Int64 // 总存储记录数
 	mqttConnected atomic.Bool  // MQTT 连接状态
 	httpRequests  atomic.Int64 // HTTP 请求数（仅计数，不返回前端）
+	errorCount    atomic.Int64 // 错误总数
+	ErrorCounters              // 内嵌错误计数器
 }
 
 // NewMonitor 创建监控器
@@ -34,8 +49,31 @@ func (m *Monitor) SetMQTTConnectionStatus(ok bool)        { m.mqttConnected.Stor
 func (m *Monitor) IsMQTTConnected() bool                  { return m.mqttConnected.Load() }
 func (m *Monitor) IncrementHTTPRequests()                 { m.httpRequests.Add(1) }
 
-// 错误和日志记录
+// 集中记录各种错误类型
 func (m *Monitor) RecordError(errorType, message string) {
+	m.errorCount.Add(1)
+
+	switch errorType {
+	case "db_write_failed":
+		m.DBWriteFailed.Add(1)
+	case "partial_write":
+		m.PartialWrite.Add(1)
+	case "memory":
+		m.Memory.Add(1)
+	case "database":
+		m.Database.Add(1)
+	case "restart":
+		m.Restart.Add(1)
+	case "rule":
+		m.Rule.Add(1)
+	case "script":
+		m.Script.Add(1)
+	case "storage_error", "database_error", "resource_contention":
+		m.Storage.Add(1)
+	default:
+		m.Other.Add(1)
+	}
+
 	log.Printf("[ERROR] %s: %s", errorType, message)
 }
 func (m *Monitor) RecordInfo(infoType, message string) {
@@ -75,6 +113,18 @@ func (m *Monitor) CollectMetrics(resourceUsage *ResourceUsageData) Metrics {
 			MQTTMessagesProcessed: m.mqttProcessed.Load(), // MQTT 处理消息数
 			MQTTMessagesFiltered:  m.mqttFiltered.Load(),  // MQTT 过滤消息数
 			TotalRecordsStored:    m.totalRecords.Load(),  // 总存储记录数
+			ErrorCount:            m.errorCount.Load(),    // 错误总数
+			ErrorByType: map[string]int64{
+				"db_write_failed": m.DBWriteFailed.Load(),
+				"partial_write":   m.PartialWrite.Load(),
+				"memory":          m.Memory.Load(),
+				"database":        m.Database.Load(),
+				"restart":         m.Restart.Load(),
+				"rule":            m.Rule.Load(),
+				"script":          m.Script.Load(),
+				"storage":         m.Storage.Load(),
+				"other":           m.Other.Load(),
+			},
 		},
 	}
 }
