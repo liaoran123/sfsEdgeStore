@@ -456,7 +456,6 @@
                             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="quickActionsDropdown" style="background: var(--tertiary-color); border: 1px solid var(--secondary-color);">
                                 <li><button class="dropdown-item" onclick="refreshData()" style="color: var(--text-color);" data-i18n="refresh">🔄 Refresh Data</button></li>
                                 <li><button class="dropdown-item" onclick="openSettings()" style="color: var(--text-color);" data-i18n="nav.settings">⚙️ Settings</button></li>
-                                <li><button class="dropdown-item" onclick="openTopicSubscription()" style="color: var(--text-color);" data-i18n="nav.subscription">📡 Topic Subscription</button></li>
                                 <li><button class="dropdown-item" onclick="exportData()" style="color: var(--text-color);" data-i18n="export">💾 Export Data</button></li>
                             </ul>
                         </div>
@@ -615,31 +614,24 @@
         </div>
     </div>
 
-    <!-- Data Retention Modal -->
-    <div class="modal fade" id="retentionSettingsModal" tabindex="-1" aria-labelledby="retentionSettingsModalLabel" aria-hidden="true">
-        <div class="modal-dialog" style="background: var(--secondary-color); border: 1px solid var(--secondary-color); border-radius: 10px; color: var(--text-color);">
-            <div class="modal-content" style="background: var(--secondary-color); border: none;">
+    <!-- Add Topic Modal -->
+    <div class="modal fade" id="addTopicModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content" style="background: var(--secondary-color); border: 1px solid var(--tertiary-color); border-radius: 12px;">
                 <div class="modal-header" style="border-bottom: 1px solid var(--tertiary-color);">
-                    <h5 class="modal-title" id="retentionSettingsModalLabel" data-i18n="data.retention">🗑️ Data Retention</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" style="filter: invert(1);"></button>
+                    <h5 class="modal-title text-primary">Add Subscription Topic</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body" style="background: var(--secondary-color); color: var(--text-color);">
-                    <div class="mb-3">
-                        <label for="retentionDays" class="form-label" data-i18n="retention.period">Retention Period (days)</label>
-                        <input type="number" class="form-control" id="retentionDays" min="1" max="365" value="30" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
-                    </div>
-                    <div class="mb-3">
-                        <label for="cleanupInterval" class="form-label" data-i18n="cleanup.interval">Cleanup Interval</label>
-                        <select class="form-select" id="cleanupInterval" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
-                            <option value="daily" data-i18n="daily">Daily</option>
-                            <option value="weekly" data-i18n="weekly">Weekly</option>
-                            <option value="monthly" data-i18n="monthly">Monthly</option>
-                        </select>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label">Topic</label>
+                        <input type="text" class="form-control" id="subNewTopic" placeholder="e.g.: devices/+/data" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
+                        <div class="form-hint text-muted small mt-1">Supports wildcards + and #</div>
                     </div>
                 </div>
                 <div class="modal-footer" style="border-top: 1px solid var(--tertiary-color);">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="cancel">Cancel</button>
-                    <button type="button" class="btn btn-primary" onclick="saveRetentionSettings()" data-i18n="save.settings">Save Settings</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="subAddTopic()">Add</button>
                 </div>
             </div>
         </div>
@@ -658,6 +650,12 @@
                     <ul class="nav nav-tabs mb-3" id="settingsTabs" role="tablist">
                         <li class="nav-item" role="presentation">
                             <button class="nav-link active" id="general-tab" data-bs-toggle="tab" data-bs-target="#general-panel" type="button" role="tab" style="color: var(--text-color); border-color: var(--tertiary-color);" data-i18n="settings.general">General</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="subscription-tab" data-bs-toggle="tab" data-bs-target="#subscription-panel" type="button" role="tab" style="color: var(--text-color); border-color: var(--tertiary-color);">📡 Subscription</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="retention-tab" data-bs-toggle="tab" data-bs-target="#retention-panel" type="button" role="tab" style="color: var(--text-color); border-color: var(--tertiary-color);">🗑️ Retention</button>
                         </li>
                         <li class="nav-item" role="presentation">
                             <button class="nav-link" id="thresholds-tab" data-bs-toggle="tab" data-bs-target="#thresholds-panel" type="button" role="tab" style="color: var(--text-color); border-color: var(--tertiary-color);" data-i18n="settings.thresholds">Thresholds</button>
@@ -740,6 +738,86 @@
                                     <label class="form-check-label" for="settingEnableAnalyzer" data-i18n="analyzer.enable.label">Enable</label>
                                 </div>
                             </div>
+                        </div>
+
+                        <!-- Subscription Panel -->
+                        <div class="tab-pane fade" id="subscription-panel" role="tabpanel">
+                            <div class="mb-3">
+                                <h6 class="text-primary mb-3">📡 Connection</h6>
+                                <div class="info-box p-3 rounded" style="background: rgba(0,217,255,0.1); border: 1px solid rgba(0,217,255,0.3);">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span id="subConnectionStatus" class="text-muted">Loading...</span>
+                                        <span id="subBroker" class="text-primary fw-bold">-</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <h6 class="text-primary mb-3">🌐 Standard Topics</h6>
+                                <div class="table-container" style="max-height: 160px; overflow-y: auto;">
+                                    <table class="table table-sm table-dark" style="background: rgba(0,0,0,0.2);">
+                                        <thead><tr><th>Topic</th><th>Status</th></tr></thead>
+                                        <tbody id="subStandardTopics">
+                                            <tr><td class="topic-name" style="font-family:'Courier New',monospace;color:var(--primary-color)">edgex/events/#</td><td><span class="badge bg-success">Subscribed</span></td></tr>
+                                            <tr><td class="topic-name" style="font-family:'Courier New',monospace;color:var(--primary-color)">devices/+/data</td><td><span class="badge bg-success">Subscribed</span></td></tr>
+                                            <tr><td class="topic-name" style="font-family:'Courier New',monospace;color:var(--primary-color)">edgex/events/core/#</td><td><span class="badge bg-success">Subscribed</span></td></tr>
+                                            <tr><td class="topic-name" style="font-family:'Courier New',monospace;color:var(--primary-color)">edgex/v2/events/#</td><td><span class="badge bg-success">Subscribed</span></td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h6 class="text-primary mb-0">✏️ Custom Topics</h6>
+                                    <button class="btn btn-primary btn-sm" onclick="showAddTopicModal()">+ Add</button>
+                                </div>
+                                <div class="table-container" style="max-height: 160px; overflow-y: auto;">
+                                    <table class="table table-sm table-dark" style="background: rgba(0,0,0,0.2);">
+                                        <thead><tr><th>Topic</th><th>Status</th><th>Action</th></tr></thead>
+                                        <tbody id="subCustomTopics"><tr><td colspan="3" class="text-center text-muted">No custom topics</td></tr></tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div>
+                                <h6 class="text-primary mb-2">🧪 Topic Test</h6>
+                                <div class="row g-2">
+                                    <div class="col-md-8">
+                                        <input type="text" class="form-control" id="subTestTopic" placeholder="Enter topic, e.g.: devices/+/data" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <button class="btn btn-primary w-100" onclick="subTestTopic()">🔍 Test</button>
+                                    </div>
+                                </div>
+                                <div id="subTestResult" class="text-muted mt-2 small">Waiting for test...</div>
+                            </div>
+                        </div>
+
+                        <!-- Retention Panel -->
+                        <div class="tab-pane fade" id="retention-panel" role="tabpanel">
+                            <div class="mb-3">
+                                <h6 class="text-primary mb-3">📊 Retention Settings</h6>
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label for="subRetentionDays" class="form-label">Retention Period (days)</label>
+                                        <input type="number" class="form-control" id="subRetentionDays" min="1" max="365" value="30" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="subCleanupInterval" class="form-label">Cleanup Interval</label>
+                                        <select class="form-select" id="subCleanupInterval" style="background: rgba(0,0,0,0.2); color: var(--text-color); border: 1px solid var(--tertiary-color);">
+                                            <option value="daily">Daily</option>
+                                            <option value="weekly">Weekly</option>
+                                            <option value="monthly">Monthly</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-primary" onclick="subSaveRetention()">Save</button>
+                                <button class="btn btn-outline-danger" onclick="subManualCleanup()">🧹 Run Cleanup Now</button>
+                            </div>
+                            <div id="subRetentionResult" class="mt-2 small text-muted"></div>
                         </div>
 
                         <!-- Thresholds Panel -->

@@ -10,6 +10,7 @@ import (
 	"sfsEdgeStore/configwizard"
 )
 
+// handleGetConfig 处理获取配置请求
 func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 	s.Monitor.IncrementHTTPRequests()
 	w.Header().Set("Content-Type", "application/json")
@@ -23,6 +24,7 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleUpdateConfig 处理更新配置请求
 func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	s.Monitor.IncrementHTTPRequests()
 	w.Header().Set("Content-Type", "application/json")
@@ -53,6 +55,7 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleReloadConfig 处理重新加载配置请求
 func (s *Server) handleReloadConfig(w http.ResponseWriter, r *http.Request) {
 	s.Monitor.IncrementHTTPRequests()
 	w.Header().Set("Content-Type", "application/json")
@@ -83,6 +86,7 @@ func (s *Server) handleReloadConfig(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleOneClickConfig 处理一键配置请求
 func (s *Server) handleOneClickConfig(w http.ResponseWriter, r *http.Request) {
 	s.Monitor.IncrementHTTPRequests()
 	w.Header().Set("Content-Type", "application/json")
@@ -103,11 +107,11 @@ func (s *Server) handleOneClickConfig(w http.ResponseWriter, r *http.Request) {
 	configManager := config.GetConfigManager()
 
 	smartConfig := &config.Config{
-		DBPath:     "./data",
-		MQTTBroker: "tcp://localhost:1883",
-		MQTTTopic:  "edgex/events/#",
-		ClientID:   config.GenerateClientID(),
-		HTTPPort:   "8081",
+		DBPath:                   "./data",
+		MQTTBroker:               "tcp://localhost:1883",
+		MQTTTopic:                "edgex/events/#",
+		ClientID:                 config.GenerateClientID(),
+		HTTPPort:                 "8081",
 		MQTTUseTLS:               false,
 		HTTPUseTLS:               false,
 		DBUseEncryption:          false,
@@ -187,6 +191,7 @@ func (s *Server) handleMQTTConfigUpdate(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+// handleSubscriptionStatus 处理订阅状态请求
 func (s *Server) handleSubscriptionStatus(w http.ResponseWriter, r *http.Request) {
 	s.Monitor.IncrementHTTPRequests()
 	w.Header().Set("Content-Type", "application/json")
@@ -242,6 +247,7 @@ func (s *Server) handleSubscriptionTest(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+// handleSubscriptionThemes 处理订阅主题请求
 func (s *Server) handleSubscriptionThemes(w http.ResponseWriter, r *http.Request) {
 	s.Monitor.IncrementHTTPRequests()
 	w.Header().Set("Content-Type", "application/json")
@@ -259,6 +265,7 @@ func (s *Server) handleSubscriptionThemes(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// handleGetSubscriptionThemes 处理获取订阅主题请求
 func (s *Server) handleGetSubscriptionThemes(w http.ResponseWriter, r *http.Request) {
 	configManager := config.GetConfigManager()
 	currentConfig := configManager.GetConfig()
@@ -284,6 +291,7 @@ func (s *Server) handleGetSubscriptionThemes(w http.ResponseWriter, r *http.Requ
 	})
 }
 
+// handleAddSubscriptionTheme 处理添加订阅主题请求
 func (s *Server) handleAddSubscriptionTheme(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Topic string `json:"topic"`
@@ -327,6 +335,7 @@ func (s *Server) handleAddSubscriptionTheme(w http.ResponseWriter, r *http.Reque
 	})
 }
 
+// handleDeleteSubscriptionTheme 处理删除订阅主题请求
 func (s *Server) handleDeleteSubscriptionTheme(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Topic string `json:"topic"`

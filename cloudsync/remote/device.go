@@ -8,14 +8,14 @@ import (
 
 // RemoteDevice 远程设备
 type RemoteDevice struct {
-	ID        string                 `json:"id"`
-	Name      string                 `json:"name"`
-	IP        string                 `json:"ip"`
-	Status    string                 `json:"status"` // online, offline, error
-	Tags      map[string]string      `json:"tags"`   // 设备标签
-	Config    map[string]interface{} `json:"config"` // 设备配置
-	LastSeen  time.Time              `json:"last_seen"`
-	CreatedAt time.Time              `json:"created_at"`
+	ID        string            `json:"id"`
+	Name      string            `json:"name"`
+	IP        string            `json:"ip"`
+	Status    string            `json:"status"` // online, offline, error
+	Tags      map[string]string `json:"tags"`   // 设备标签
+	Config    map[string]any    `json:"config"` // 设备配置
+	LastSeen  time.Time         `json:"last_seen"`
+	CreatedAt time.Time         `json:"created_at"`
 }
 
 // NewRemoteDevice 创建远程设备

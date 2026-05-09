@@ -9,6 +9,7 @@ import (
 	"sfsEdgeStore/monitor"
 )
 
+// handleHealth 处理健康检查请求
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -21,6 +22,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(healthStatus)
 }
 
+// handleReady 处理就绪检查请求
 func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -52,6 +54,7 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(readyStatus)
 }
 
+// handleMetrics 处理指标请求
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	if s.Monitor == nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -75,6 +78,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(metrics)
 }
 
+// handleRetentionStatus 处理保留策略状态请求
 func (s *Server) handleRetentionStatus(w http.ResponseWriter, r *http.Request) {
 	if s.Monitor != nil {
 		s.Monitor.IncrementHTTPRequests()
@@ -94,6 +98,7 @@ func (s *Server) handleRetentionStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleManualCleanup 处理手动清理请求
 func (s *Server) handleManualCleanup(w http.ResponseWriter, r *http.Request) {
 	if s.Monitor != nil {
 		s.Monitor.IncrementHTTPRequests()
@@ -128,6 +133,7 @@ func (s *Server) handleManualCleanup(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleAlertNotifierStatus 处理告通知器状态请求
 func (s *Server) handleAlertNotifierStatus(w http.ResponseWriter, r *http.Request) {
 	if s.Monitor != nil {
 		s.Monitor.IncrementHTTPRequests()
@@ -147,6 +153,7 @@ func (s *Server) handleAlertNotifierStatus(w http.ResponseWriter, r *http.Reques
 	})
 }
 
+// handleTestAlert 处理测试告警请求
 func (s *Server) handleTestAlert(w http.ResponseWriter, r *http.Request) {
 	if s.Monitor != nil {
 		s.Monitor.IncrementHTTPRequests()
@@ -198,6 +205,7 @@ func (s *Server) handleTestAlert(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleAlertGroups 处理告警分组请求
 func (s *Server) handleAlertGroups(w http.ResponseWriter, r *http.Request) {
 	if s.Monitor != nil {
 		s.Monitor.IncrementHTTPRequests()
@@ -210,6 +218,7 @@ func (s *Server) handleAlertGroups(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleResourceStatus 处理资源状态请求
 func (s *Server) handleResourceStatus(w http.ResponseWriter, r *http.Request) {
 	if s.Monitor != nil {
 		s.Monitor.IncrementHTTPRequests()

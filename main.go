@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -24,10 +23,11 @@ import (
 	"sfsEdgeStore/server"
 )
 
-func init() {
-	debug.SetGCPercent(100)
-}
-
+/*
+	func init() {
+		debug.SetGCPercent(100)
+	}
+*/
 type Components struct {
 	Monitor         *monitor.Monitor
 	AlertNotifier   *alert.Notifier

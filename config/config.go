@@ -67,6 +67,16 @@ type Config struct {
 	DBScenario string `json:"db_scenario"`
 	// 自定义订阅主题
 	CustomTopics []string `json:"custom_topics,omitempty"`
+	// 数据同步配置
+	EnableDataSync         bool   `json:"enable_data_sync"`
+	DataSyncInterval       int    `json:"data_sync_interval_seconds"`
+	DataSyncBatchSize      int    `json:"data_sync_batch_size"`
+	DataSyncMaxRetryCount  int    `json:"data_sync_max_retry"`
+	DataSyncQueueDir       string `json:"data_sync_queue_dir,omitempty"`
+	DataSyncUploadMode     string `json:"data_sync_upload_mode"`     // "http" 或 "mqtt"
+	DataSyncBrokerURL      string `json:"data_sync_broker_url,omitempty"` // 云端 HTTP 端点或 MQTT Broker
+	DataSyncMQTTTopic      string `json:"data_sync_mqtt_topic,omitempty"` // 云端 MQTT 话题
+	DataSyncAuthToken      string `json:"data_sync_auth_token,omitempty"`
 }
 
 // ThresholdConfig 阈值配置
@@ -172,6 +182,13 @@ func Load() (*Config, error) {
 		ResourceMonitorInterval:  60,
 		// 数据库场景默认值（极限生存模式，适合 128MB 以下内存设备）
 		DBScenario: ScenarioExtreme,
+		// 数据同步默认值
+		EnableDataSync: false,
+		DataSyncInterval:      60,
+		DataSyncBatchSize:     100,
+		DataSyncMaxRetryCount: 3,
+		DataSyncQueueDir:      "data/sync_queue",
+		DataSyncUploadMode:    "http",
 	}
 
 	if err := loadFromConfigCenter(cfg); err != nil {

@@ -17,6 +17,7 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+// handleWebIndex 处理 Web 界面的索引请求
 func (s *Server) handleWebIndex(w http.ResponseWriter, r *http.Request) {
 	webDir, err := pathutil.Join("web")
 	if err != nil {
@@ -35,18 +36,14 @@ func (s *Server) handleWebIndex(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		http.ServeFile(w, r, indexFile)
-	case "/mqtt-subscription":
-		pageFile := filepath.Join(webDir, "mqtt-subscription.html")
-		if _, err := os.Stat(pageFile); os.IsNotExist(err) {
-			http.Error(w, "MQTT subscription page not found.", http.StatusNotFound)
-			return
-		}
-		http.ServeFile(w, r, pageFile)
+	case "/subscription-topics":
+		http.Redirect(w, r, "/", http.StatusFound)
 	default:
 		s.handleStaticFiles(w, r)
 	}
 }
 
+// handleStaticFiles 处理 Web 界面的静态文件请求
 func (s *Server) handleStaticFiles(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Static file request: %s", r.URL.Path)
 
@@ -104,6 +101,7 @@ func (s *Server) handleStaticFiles(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, filePath)
 }
 
+// handleWebSocket 处理 WebSocket 连接请求
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {

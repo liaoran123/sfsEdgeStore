@@ -18,7 +18,6 @@ function oneClickConfig() {
     .then(data => {
         if (data.status === 'success') {
             alert('One-click config successful!');
-            // Refresh data
             fetchData();
         } else {
             alert('Config failed: ' + (data.message || 'Unknown error'));
@@ -42,7 +41,7 @@ function refreshData() {
 // Export Data
 function exportData() {
     const exportType = prompt('Please select export format:\n1. CSV\n2. JSON', '1');
-    
+
     if (exportType === '1') {
         window.open('/api/export/csv', '_blank');
     } else if (exportType === '2') {
@@ -58,16 +57,16 @@ function openSettings() {
         .then(response => response.json())
         .then(data => {
             const config = data.data || data.config || data;
-            
+
             const modal = new bootstrap.Modal(document.getElementById('settingsModal'));
             modal.show();
-            
+
             setTimeout(() => {
                 document.getElementById('settingMqttBroker').value = config.mqtt_broker || 'tcp://localhost:1883';
                 document.getElementById('settingDbPath').value = config.db_path || 'data/sfs.db';
                 document.getElementById('settingDbScenario').value = config.db_scenario || 'edge';
                 document.getElementById('settingHttpPort').value = config.http_port || '8081';
-                
+
                 document.getElementById('settingResourceMonitoring').checked = config.enable_resource_monitoring || false;
                 document.getElementById('settingMaxMemory').value = config.max_memory_mb || 45;
                 document.getElementById('settingRetentionPolicy').checked = config.enable_retention_policy || false;
@@ -80,10 +79,10 @@ function openSettings() {
         })
         .catch(error => {
             console.error('Failed to get config:', error);
-            
+
             const modal = new bootstrap.Modal(document.getElementById('settingsModal'));
             modal.show();
-            
+
             setTimeout(() => {
                 document.getElementById('settingMqttBroker').value = 'tcp://localhost:1883';
                 document.getElementById('settingDbPath').value = 'data/sfs.db';
@@ -114,7 +113,7 @@ function saveSettings() {
         enable_analyzer: document.getElementById('settingEnableAnalyzer').checked,
         analyzer_thresholds: currentThresholds
     };
-    
+
     fetch('/api/config/update', {
         method: 'POST',
         headers: {
@@ -150,7 +149,7 @@ function applyRecommendedSettings() {
     document.getElementById('settingRetentionPolicy').checked = true;
     document.getElementById('settingRetentionDays').value = 30;
     document.getElementById('settingEnableAnalyzer').checked = true;
-    
+
     alert('Recommended settings applied. Please review and click Save & Apply to save.');
 }
 
@@ -159,22 +158,22 @@ function renderThresholdTable() {
     var tbody = document.getElementById('thresholdTableBody');
     var noMsg = document.getElementById('noThresholdsMsg');
     tbody.innerHTML = '';
-    
+
     var keys = Object.keys(currentThresholds);
     if (keys.length === 0) {
         noMsg.style.display = 'block';
         return;
     }
-    
+
     noMsg.style.display = 'none';
     keys.forEach(function(key) {
         var t = currentThresholds[key];
         var isDeviceThreshold = key.includes(':');
         var device = isDeviceThreshold ? key.split(':')[0] : '(default)';
         var reading = isDeviceThreshold ? key.split(':')[1] : key;
-        
+
         var tr = document.createElement('tr');
-        tr.innerHTML = 
+        tr.innerHTML =
             '<td>' + device + '</td>' +
             '<td>' + reading + '</td>' +
             '<td>' + t.min + '</td>' +
@@ -189,20 +188,20 @@ function addThreshold() {
     var reading = document.getElementById('thresholdReading').value.trim();
     var min = parseFloat(document.getElementById('thresholdMin').value);
     var max = parseFloat(document.getElementById('thresholdMax').value);
-    
+
     if (!reading || isNaN(min) || isNaN(max)) {
         alert('Please fill in Reading name, Min and Max values');
         return;
     }
-    
+
     var key = device ? device + ':' + reading : reading;
     currentThresholds[key] = { min: min, max: max, device: device };
-    
+
     document.getElementById('thresholdDevice').value = '';
     document.getElementById('thresholdReading').value = '';
     document.getElementById('thresholdMin').value = '';
     document.getElementById('thresholdMax').value = '';
-    
+
     renderThresholdTable();
 }
 
@@ -213,39 +212,32 @@ function deleteThreshold(key) {
 
 // Data Retention
 function openRetentionSettings() {
-    // Get current settings from server
     fetch('/api/retention/status')
         .then(response => response.json())
         .then(data => {
-            // Show modal
             const modal = new bootstrap.Modal(document.getElementById('retentionSettingsModal'));
             modal.show();
-            
-            // Set values after modal is shown
+
             setTimeout(() => {
-                // Adapt to backend API response format
                 const retentionStatus = data.data || data;
-                
-                // Always use server returned values, even if enabled is false
+
                 const retentionDaysEl = document.getElementById('retentionDays');
                 if (retentionDaysEl) {
-                    // Use server value if available, otherwise use default
                     if (retentionStatus.retention_days > 0) {
                         retentionDaysEl.value = retentionStatus.retention_days;
                     } else {
                         retentionDaysEl.value = 30;
                     }
                 }
-                
-                // Convert cleanup interval
+
                 const cleanupInterval = retentionStatus.cleanup_interval || 24;
                 let intervalValue = 'daily';
-                if (cleanupInterval === 168) { // 7 days
+                if (cleanupInterval === 168) {
                     intervalValue = 'weekly';
-                } else if (cleanupInterval === 720) { // 30 days
+                } else if (cleanupInterval === 720) {
                     intervalValue = 'monthly';
                 }
-                
+
                 const cleanupIntervalEl = document.getElementById('cleanupInterval');
                 if (cleanupIntervalEl) {
                     cleanupIntervalEl.value = intervalValue;
@@ -254,19 +246,16 @@ function openRetentionSettings() {
         })
         .catch(error => {
             console.error('Failed to get data retention:', error);
-            
-            // Show modal
+
             const modal = new bootstrap.Modal(document.getElementById('retentionSettingsModal'));
             modal.show();
-            
-            // Set default values after modal is shown
+
             setTimeout(() => {
-                // Use default values
                 const retentionDaysEl = document.getElementById('retentionDays');
                 if (retentionDaysEl) {
                     retentionDaysEl.value = 30;
                 }
-                
+
                 const cleanupIntervalEl = document.getElementById('cleanupInterval');
                 if (cleanupIntervalEl) {
                     cleanupIntervalEl.value = 'daily';
@@ -275,54 +264,227 @@ function openRetentionSettings() {
         });
 }
 
-// Topic Subscription
+// Topic Subscription - opens settings modal to subscription tab
 function openTopicSubscription() {
-    window.location.href = '/mqtt-subscription';
+    openSettingsTab('subscription');
 }
 
-function saveRetentionSettings() {
-    const retentionDays = document.getElementById('retentionDays').value;
-    const cleanupInterval = document.getElementById('cleanupInterval').value;
-    
-    // Convert cleanup interval to hours
-    let cleanupIntervalHours = 24; // Default daily
-    if (cleanupInterval === 'weekly') {
-        cleanupIntervalHours = 168; // 7 days
-    } else if (cleanupInterval === 'monthly') {
-        cleanupIntervalHours = 720; // 30 days
+// Retention Settings - opens settings modal to retention tab
+function openRetentionSettings() {
+    openSettingsTab('retention');
+}
+
+function openSettingsTab(tabId) {
+    const modal = new bootstrap.Modal(document.getElementById('settingsModal'));
+    modal.show();
+
+    setTimeout(() => {
+        const tab = document.getElementById(tabId + '-tab');
+        if (tab) {
+            tab.click();
+        }
+
+        if (tabId === 'subscription') {
+            subLoadData();
+        } else if (tabId === 'retention') {
+            subLoadRetention();
+        }
+    }, 200);
+}
+
+// ===== Subscription Tab Functions =====
+let subCustomTopics = [];
+
+function subLoadData() {
+    subLoadConnectionStatus();
+    subLoadTopics();
+}
+
+function subLoadConnectionStatus() {
+    fetch('/api/subscription/status')
+        .then(response => response.json())
+        .then(result => {
+            const data = result.data || {};
+            const el = document.getElementById('subConnectionStatus');
+            const brokerEl = document.getElementById('subBroker');
+            if (el) el.textContent = data.connected ? 'Connected' : 'Disconnected';
+            if (el) el.style.color = data.connected ? '#4CAF50' : '#ff6b6b';
+            if (brokerEl) brokerEl.textContent = data.broker || '-';
+        })
+        .catch(() => {
+            const el = document.getElementById('subConnectionStatus');
+            if (el) el.textContent = 'Unknown';
+        });
+}
+
+function subLoadTopics() {
+    fetch('/api/subscription/themes')
+        .then(response => response.json())
+        .then(result => {
+            if (result.status === 'success') {
+                subCustomTopics = result.custom_topics || [];
+                subRenderCustomTopics();
+            }
+        })
+        .catch(() => {});
+}
+
+function subRenderCustomTopics() {
+    const tbody = document.getElementById('subCustomTopics');
+    if (!tbody) return;
+
+    if (subCustomTopics.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No custom topics</td></tr>';
+        return;
     }
-    
-    // Build config object
-    const configData = {
-        enable_retention_policy: true,
-        retention_days: parseInt(retentionDays),
-        cleanup_interval_hours: cleanupIntervalHours
-    };
-    
-    // Send to server
+
+    tbody.innerHTML = subCustomTopics.map((t, i) =>
+        `<tr>
+            <td class="topic-name" style="font-family:'Courier New',monospace;color:var(--primary-color)">${t.topic}</td>
+            <td><span class="badge ${t.active ? 'bg-success' : 'bg-warning'}">${t.active ? 'Subscribed' : 'Not Active'}</span></td>
+            <td><button class="btn btn-danger btn-sm" onclick="subRemoveTopic(${i})">Delete</button></td>
+        </tr>`
+    ).join('');
+}
+
+function showAddTopicModal() {
+    const modal = new bootstrap.Modal(document.getElementById('addTopicModal'));
+    document.getElementById('subNewTopic').value = '';
+    modal.show();
+}
+
+function subAddTopic() {
+    const topic = document.getElementById('subNewTopic').value.trim();
+    if (!topic) { alert('Please enter topic'); return; }
+
+    fetch('/api/subscription/themes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: topic })
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.status === 'success') {
+            const modal = bootstrap.Modal.getInstance(document.getElementById('addTopicModal'));
+            if (modal) modal.hide();
+            subLoadTopics();
+        } else {
+            alert('Add failed: ' + (result.error || 'Unknown error'));
+        }
+    })
+    .catch(error => alert('Add topic failed: ' + error.message));
+}
+
+function subRemoveTopic(index) {
+    if (!confirm('Are you sure you want to delete this topic?')) return;
+    const topic = subCustomTopics[index];
+    fetch('/api/subscription/themes', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: topic.topic })
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.status === 'success') subLoadTopics();
+        else alert('Delete failed: ' + (result.error || 'Unknown error'));
+    })
+    .catch(error => alert('Delete failed: ' + error.message));
+}
+
+function subTestTopic() {
+    const topic = document.getElementById('subTestTopic').value.trim();
+    const resultEl = document.getElementById('subTestResult');
+    if (!topic) { resultEl.innerHTML = '<span style="color:#ffc107;">Please enter topic</span>'; return; }
+
+    resultEl.innerHTML = '<span style="color:#17a2b8;">Testing...</span>';
+    fetch('/api/subscription/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: topic })
+    })
+    .then(response => response.json())
+    .then(result => {
+        resultEl.innerHTML = result.status === 'success'
+            ? '<span style="color:#4CAF50;">✅ Test successful!</span>'
+            : '<span style="color:#dc3545;">❌ Test failed</span>';
+    })
+    .catch(error => resultEl.innerHTML = '<span style="color:#dc3545;">❌ Error: ' + error.message + '</span>');
+}
+
+// ===== Retention Tab Functions =====
+function subLoadRetention() {
+    fetch('/api/retention/status')
+        .then(response => response.json())
+        .then(data => {
+            const status = data.data || data;
+            const daysEl = document.getElementById('subRetentionDays');
+            const intervalEl = document.getElementById('subCleanupInterval');
+            if (daysEl && status.retention_days > 0) daysEl.value = status.retention_days;
+            if (intervalEl) {
+                const h = status.cleanup_interval || 24;
+                intervalEl.value = h === 168 ? 'weekly' : h === 720 ? 'monthly' : 'daily';
+            }
+        })
+        .catch(() => {});
+}
+
+function subSaveRetention() {
+    const days = document.getElementById('subRetentionDays').value;
+    const interval = document.getElementById('subCleanupInterval').value;
+    let hours = 24;
+    if (interval === 'weekly') hours = 168;
+    else if (interval === 'monthly') hours = 720;
+
     fetch('/api/config/update', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(configData)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            enable_retention_policy: true,
+            retention_days: parseInt(days),
+            cleanup_interval_hours: hours
+        })
     })
     .then(response => response.json())
     .then(data => {
+        const el = document.getElementById('subRetentionResult');
+        if (!el) return;
         if (data.status === 'success') {
-            alert('Data retention saved!');
-            
-            // Close modal
-            const modal = bootstrap.Modal.getInstance(document.getElementById('retentionSettingsModal'));
-            modal.hide();
+            el.innerHTML = '<span style="color:#4CAF50;">✅ Retention settings saved</span>';
+            setTimeout(() => el.innerHTML = '', 3000);
         } else {
-            alert('Save failed: ' + (data.message || 'Unknown error'));
+            el.innerHTML = '<span style="color:#dc3545;">❌ ' + (data.error || 'Save failed') + '</span>';
         }
     })
-    .catch(error => {
-        console.error('Save data retention failed:', error);
-        alert('Save failed, please check network connection');
+    .catch(() => {
+        const el = document.getElementById('subRetentionResult');
+        if (el) el.innerHTML = '<span style="color:#dc3545;">❌ Save failed</span>';
     });
+}
+
+function subManualCleanup() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '🧹 Cleaning...';
+
+    fetch('/api/retention/cleanup', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            const el = document.getElementById('subRetentionResult');
+            if (!el) return;
+            if (data.status === 'success') {
+                el.innerHTML = '<span style="color:#4CAF50;">✅ Cleanup completed, deleted ' + data.deleted_count + ' records</span>';
+            } else {
+                el.innerHTML = '<span style="color:#dc3545;">❌ ' + (data.error || 'Cleanup failed') + '</span>';
+            }
+        })
+        .catch(() => {
+            const el = document.getElementById('subRetentionResult');
+            if (el) el.innerHTML = '<span style="color:#dc3545;">❌ Cleanup failed</span>';
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.textContent = '🧹 Run Cleanup Now';
+        });
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -331,22 +493,28 @@ document.addEventListener('DOMContentLoaded', function() {
     fetchMetrics();
     fetchDeviceStatus();
     fetchDeviceAlerts();
-    // Stagger intervals to reduce CPU spikes
     setInterval(fetchData, updateInterval);
     setInterval(fetchMetrics, updateInterval);
-    // Device status/alerts: refresh every 30s (less frequent)
     setInterval(fetchDeviceStatus, updateInterval * 3);
     setInterval(fetchDeviceAlerts, updateInterval * 3);
+
+    // Load subscription data when the tab is shown
+    document.getElementById('subscription-tab').addEventListener('shown.bs.tab', function () {
+        subLoadData();
+    });
+    document.getElementById('retention-tab').addEventListener('shown.bs.tab', function () {
+        subLoadRetention();
+    });
 });
 
 // WebSocket Connection
 function connectWebSocket() {
     ws = new WebSocket('ws://' + window.location.host + '/ws');
-    
+
     ws.onopen = function() {
         console.log('WebSocket connected');
     };
-    
+
     ws.onmessage = function(event) {
         try {
             const data = JSON.parse(event.data);
@@ -355,11 +523,11 @@ function connectWebSocket() {
             console.error('Error parsing WebSocket message:', e);
         }
     };
-    
+
     ws.onerror = function(error) {
         console.error('WebSocket error:', error);
     };
-    
+
     ws.onclose = function() {
         console.log('WebSocket disconnected, reconnecting...');
         setTimeout(connectWebSocket, 3000);
@@ -388,7 +556,7 @@ function handleWebSocketMessage(data) {
 function updateRealtimeData(deviceData) {
     try {
         if (!deviceData) return;
-        
+
         const records = deviceData.records || [];
         records.forEach(record => {
             realtimeData.unshift(record);
@@ -410,48 +578,6 @@ function updateDeviceAlerts(alertData) {
         const deviceName = alertData.deviceName;
         const alerts = alertData.alerts;
         fetchDeviceAlerts();
-    } catch (e) {
-        // Silent fail
-    }
-}
-
-function updateUnhealthyDevices(alertGroups) {
-    try {
-        const container = document.getElementById('unhealthyDevices');
-        if (!container) return;
-        
-        const unhealthyDeviceMap = new Map();
-        alertGroups.forEach(g => {
-            if (g.alerts && g.alerts.length > 0) {
-                g.alerts.forEach(alert => {
-                    if (!unhealthyDeviceMap.has(g.deviceName)) {
-                        unhealthyDeviceMap.set(g.deviceName, []);
-                    }
-                    unhealthyDeviceMap.get(g.deviceName).push(alert.message || 'Alert');
-                });
-            }
-        });
-        
-        if (unhealthyDeviceMap.size === 0) {
-            container.innerHTML = '<div class="text-white-50 text-center">No unhealthy devices</div>';
-            return;
-        }
-    
-        let html = '<div class="row g-2">';
-        unhealthyDeviceMap.forEach((alerts, name) => {
-            const badgeClass = 'bg-warning';
-            html += `<div class="col-12 col-sm-6 col-md-4">
-                <div class="p-2 rounded" style="background: rgba(255,107,107,0.15); border: 1px solid rgba(255,107,107,0.3);">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span class="text-danger fw-bold">${name}</span>
-                        <span class="badge ${badgeClass} text-dark">${alerts.length}</span>
-                    </div>
-                    <div class="text-white-50 small mt-1">${alerts.slice(0, 2).join(', ')}${alerts.length > 2 ? '...' : ''}</div>
-                </div>
-            </div>`;
-        });
-        html += '</div>';
-        container.innerHTML = html;
     } catch (e) {
         // Silent fail
     }
@@ -502,16 +628,13 @@ function getUnitByReading(reading) {
         'pm25': 'μg/m³',
         'pm10': 'μg/m³'
     };
-    
-    // Convert reading to lowercase for case-insensitive matching
+
     const lowerReading = reading.toLowerCase();
-    
-    // Check if reading is in the unit map
+
     if (unitMap[lowerReading]) {
         return unitMap[lowerReading];
     }
-    
-    // Check for common prefixes or suffixes
+
     if (lowerReading.includes('temp')) {
         return '°C';
     } else if (lowerReading.includes('humid')) {
@@ -527,8 +650,7 @@ function getUnitByReading(reading) {
     } else if (lowerReading.includes('energy')) {
         return 'kWh';
     }
-    
-    // Default to empty string if no unit found
+
     return '';
 }
 
@@ -539,7 +661,6 @@ async function fetchData() {
         realtimeData = data.readings || [];
         updateTable();
         await updateDeviceList();
-        updateDeviceSelect();
         updateWaveform();
 
         const dataCountElement = document.getElementById('dataCount');
@@ -556,7 +677,6 @@ async function fetchData() {
             connectionDotElement.className = 'status-dot online';
         }
     } catch (e) {
-        // Silent fail for fetch data
         const connectionStatusElement = document.getElementById('connectionStatus');
         const connectionDotElement = document.getElementById('connectionDot');
         if (connectionStatusElement) {
@@ -574,30 +694,20 @@ async function fetchMetrics() {
         const data = await res.json();
         if (data.application) {
             const total = data.application.mqtt_messages_received || 0;
-            const processed = data.application.mqtt_messages_processed || 0;
             const filtered = data.application.mqtt_messages_filtered || 0;
 
-            // Update total messages
             const mqttTotalElement = document.getElementById('mqttTotal');
             if (mqttTotalElement) {
                 mqttTotalElement.textContent = formatNumber(total);
             }
 
-            // Update valid/processed data
-            const mqttProcessedElement = document.getElementById('mqttProcessed');
-            if (mqttProcessedElement) {
-                mqttProcessedElement.textContent = formatNumber(processed);
-            }
-
-            // Update filtered count
             const mqttFilteredElement = document.getElementById('mqttFiltered');
             if (mqttFilteredElement) {
                 mqttFilteredElement.textContent = formatNumber(filtered);
             }
 
-            // Estimate breakdown (filtered is total filtered, split into non-event and invalid)
-            const nonEventEstimate = Math.round(filtered * 0.6); // ~60% non-event
-            const invalidEstimate = filtered - nonEventEstimate; // ~40% invalid/missing values
+            const nonEventEstimate = Math.round(filtered * 0.6);
+            const invalidEstimate = filtered - nonEventEstimate;
 
             const nonEventElement = document.getElementById('nonEventCount');
             if (nonEventElement) {
@@ -609,7 +719,6 @@ async function fetchMetrics() {
                 invalidElement.textContent = formatNumber(invalidEstimate);
             }
 
-            // Update total records stored
             const recordsStored = data.application.total_records_stored || 0;
             const recordsStoredElement = document.getElementById('totalRecordsStored');
             if (recordsStoredElement) {
@@ -633,11 +742,6 @@ async function fetchMetrics() {
         }
     } catch (e) {
         // Silent fail
-    }
-
-    const lastUpdateElement = document.getElementById('lastUpdate');
-    if (lastUpdateElement) {
-        lastUpdateElement.textContent = 'Updated: ' + new Date().toLocaleTimeString();
     }
 }
 
@@ -676,29 +780,6 @@ async function fetchDeviceStatus() {
         const res = await fetch('/api/device-status');
         const data = await res.json();
         const devices = data.devices || [];
-
-        const onlineDevices = devices.filter(d => d.isOnline).length;
-        const totalDevices = devices.length;
-
-        const statusElement = document.getElementById('systemStatusValue');
-        if (statusElement) {
-            const healthyRatio = totalDevices > 0 ? (onlineDevices / totalDevices) : 0;
-            if (healthyRatio >= 0.8) {
-                statusElement.textContent = 'Healthy';
-                statusElement.className = 'text-primary';
-            } else if (healthyRatio >= 0.5) {
-                statusElement.textContent = 'Warning';
-                statusElement.className = 'text-warning';
-            } else {
-                statusElement.textContent = 'Critical';
-                statusElement.className = 'text-danger';
-            }
-        }
-
-        const onlineCountElement = document.getElementById('onlineCount');
-        const totalCountElement = document.getElementById('totalCount');
-        if (onlineCountElement) onlineCountElement.textContent = onlineDevices;
-        if (totalCountElement) totalCountElement.textContent = totalDevices;
     } catch (e) {
         // Silent fail
     }
@@ -713,8 +794,6 @@ async function fetchDeviceAlerts() {
         const alertCountElement = document.getElementById('deviceAlertCount');
         if (!alertsContainer) return;
 
-        // Use API returned groups directly, no alertList cache
-        // Update alert count
         if (alertCountElement) {
             alertCountElement.textContent = groups.length;
         }
@@ -757,10 +836,8 @@ async function fetchDeviceAlerts() {
                 infoLine + '</div>';
         }
         alertsContainer.innerHTML = html;
-        // Update unhealthy devices list
         updateUnhealthyDevices(groups);
     } catch (e) {
-        // Silent fail
         const alertsContainer = document.getElementById('deviceAlerts');
         const alertCountElement = document.getElementById('deviceAlertCount');
         if (alertsContainer) {
@@ -774,7 +851,6 @@ async function fetchDeviceAlerts() {
 
 // Clear Alerts
 function clearDeviceAlerts() {
-    alertList = [];
     const alertsContainer = document.getElementById('deviceAlerts');
     const alertCountElement = document.getElementById('deviceAlertCount');
     if (alertsContainer) {
@@ -789,7 +865,6 @@ function updateUnhealthyDevices(groups) {
     const container = document.getElementById('unhealthyDevices');
     if (!container) return;
 
-    // Collect devices with alerts
     const unhealthyDeviceMap = new Map();
     groups.forEach(g => {
         if (g.Devices && g.Devices.length > 0) {
@@ -875,27 +950,6 @@ function filterDeviceTable() {
     updateDeviceList();
 }
 
-function updateDeviceSelect() {
-    const select = document.getElementById('deviceSelect');
-    if (!select) return;
-
-    const devices = [...new Set(realtimeData.map(d => d.deviceName))];
-    const currentValue = select.value;
-
-    select.innerHTML = '<option value="">Select Device</option>';
-    devices.forEach(device => {
-        const option = document.createElement('option');
-        option.value = device;
-        option.textContent = device;
-        select.appendChild(option);
-    });
-
-    if (devices.includes(currentValue)) {
-        select.value = currentValue;
-    }
-    selectedDevice = select.value;
-}
-
 function filterTable() {
     updateTable();
 }
@@ -979,48 +1033,4 @@ function updateWaveform() {
     });
 
     svg.innerHTML = svgContent;
-}
-
-// One-click Config
-function oneClickConfig() {
-    fetch('/api/config/oneclick', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'success') {
-            alert('One-click config successful!');
-            // Refresh data
-            fetchData();
-        } else {
-            alert('Config failed: ' + (data.message || 'Unknown error'));
-        }
-    })
-    .catch(error => {
-        console.error('Config failed:', error);
-        alert('Config failed, please check network connection');
-    });
-}
-
-// Refresh Data
-function refreshData() {
-    fetchData();
-    fetchMetrics();
-    fetchDeviceStatus();
-    fetchDeviceAlerts();
-    alert('Data refreshed!');
-}
-
-// Export Data
-function exportData() {
-    const exportType = prompt('Please select export format:\n1. CSV\n2. JSON', '1');
-    
-    if (exportType === '1') {
-        window.open('/api/export/csv', '_blank');
-    } else if (exportType === '2') {
-        window.open('/api/export/json', '_blank');
-    }
 }

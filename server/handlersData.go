@@ -17,6 +17,7 @@ import (
 	"github.com/liaoran123/sfsDb/storage"
 )
 
+// handleQueryReadings 处理查询数据的请求
 func (s *Server) handleQueryReadings(w http.ResponseWriter, r *http.Request) {
 	s.Monitor.IncrementHTTPRequests()
 	w.Header().Set("Content-Type", "application/json")
@@ -62,6 +63,12 @@ func (s *Server) handleQueryReadings(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleDeviceStatus 处理查询状态的请求
+/*
+SELECT deviceName, COUNT(*) as dataCount, MAX(timestamp) as lastActive
+FROM table
+GROUP BY deviceName
+*/
 func (s *Server) handleDeviceStatus(w http.ResponseWriter, r *http.Request) {
 	s.Monitor.IncrementHTTPRequests()
 	w.Header().Set("Content-Type", "application/json")
@@ -69,19 +76,19 @@ func (s *Server) handleDeviceStatus(w http.ResponseWriter, r *http.Request) {
 	records, err := database.QueryRecords(database.Table, "", "", "", false)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": err.Error()})
+		json.NewEncoder(w).Encode(map[string]any{"status": "error", "message": err.Error()})
 		return
 	}
 	defer records.Release()
 
-	deviceMap := make(map[string]*map[string]interface{})
+	deviceMap := make(map[string]*map[string]any)
 	for _, rec := range records {
 		deviceName, ok := rec["deviceName"].(string)
 		if !ok {
 			continue
 		}
 		if _, exists := deviceMap[deviceName]; !exists {
-			deviceMap[deviceName] = &map[string]interface{}{
+			deviceMap[deviceName] = &map[string]any{
 				"deviceName": deviceName,
 				"isOnline":   false,
 				"lastActive": rec["timestamp"],
@@ -106,7 +113,7 @@ func (s *Server) handleDeviceStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var devices []map[string]interface{}
+	var devices []map[string]any
 	for _, device := range deviceMap {
 		devices = append(devices, *device)
 	}
@@ -117,6 +124,7 @@ func (s *Server) handleDeviceStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleBackup 处理备份数据库请求
 func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 	s.Monitor.IncrementHTTPRequests()
 	w.Header().Set("Content-Type", "application/json")
@@ -146,6 +154,7 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleRestore 处理恢复数据库请求
 func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 	if s.Monitor != nil {
 		s.Monitor.IncrementHTTPRequests()
@@ -178,6 +187,8 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ------------下面的都是测试用-----------------------------
+// handleTestEdgeX 处理测试 EdgeX 消息的请求
 func (s *Server) handleTestEdgeX(w http.ResponseWriter, r *http.Request) {
 	if s.Monitor != nil {
 		s.Monitor.IncrementHTTPRequests()
@@ -235,6 +246,7 @@ func (s *Server) handleTestEdgeX(w http.ResponseWriter, r *http.Request) {
 	handleEdgeXEvent(s, w, event)
 }
 
+// handleEdgeXEvent 处理 EdgeX 消息事件
 func handleEdgeXEvent(s *Server, w http.ResponseWriter, event *edgex.EdgeXEvent) {
 	var records []*map[string]any
 	for _, reading := range event.Readings {
@@ -260,7 +272,7 @@ func handleEdgeXEvent(s *Server, w http.ResponseWriter, event *edgex.EdgeXEvent)
 	}
 
 	if len(records) > 0 {
-		_, err := s.Table.BatchInsertNoInc(records, false)
+		_, err := s.Table.BatchInsertNoIncIoT(records, false)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
