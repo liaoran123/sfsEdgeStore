@@ -39,7 +39,8 @@ func PutBroadcastMessage(msg *BroadcastMessage) {
 
 // MarshalJSON 序列化为 JSON 字节
 func (m *BroadcastMessage) MarshalJSON() ([]byte, error) {
-	return json.Marshal(m)
+	type Alias BroadcastMessage
+	return json.Marshal((*Alias)(m))
 }
 
 // PutTo 将消息推入广播通道，通道满时静默丢弃。
