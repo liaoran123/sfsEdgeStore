@@ -177,9 +177,9 @@ func Load() (*Config, error) {
 		AlertMQTTTopic:           "edgex/alerts",
 		AlertMinSeverity:         "warning",
 		// 资源使用监控默认值
-		EnableResourceMonitoring: false,
+		EnableResourceMonitoring: true,
 		MaxMemoryMB:              32,
-		ResourceMonitorInterval:  60,
+		ResourceMonitorInterval:  3,
 		// 数据库场景默认值（极限生存模式，适合 128MB 以下内存设备）
 		DBScenario: ScenarioExtreme,
 		// 数据同步默认值

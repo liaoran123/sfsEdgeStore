@@ -3,8 +3,22 @@ let realtimeData = [];
 let historicalData = [];
 let selectedDevice = '';
 let selectedReading = '';
-let updateInterval = 10000; // 10 seconds refresh (reduce CPU usage)
+let updateInterval = 3000; // 3 seconds refresh
 let ws;
+let wsConnected = false;
+let pollingTimers = [];
+
+function startPolling() {
+    stopPolling();
+    pollingTimers.push(setInterval(() => { if (!wsConnected) fetchData(); }, updateInterval));
+    pollingTimers.push(setInterval(fetchMetrics, updateInterval));
+    pollingTimers.push(setInterval(() => { if (!wsConnected) fetchDeviceAlerts(); }, updateInterval * 3));
+}
+
+function stopPolling() {
+    pollingTimers.forEach(clearInterval);
+    pollingTimers = [];
+}
 
 // One-click Config
 function oneClickConfig() {
@@ -33,7 +47,6 @@ function oneClickConfig() {
 function refreshData() {
     fetchData();
     fetchMetrics();
-    fetchDeviceStatus();
     fetchDeviceAlerts();
     alert('Data refreshed!');
 }
@@ -489,14 +502,9 @@ function subManualCleanup() {
 
 document.addEventListener('DOMContentLoaded', function() {
     connectWebSocket();
-    fetchData();
     fetchMetrics();
-    fetchDeviceStatus();
     fetchDeviceAlerts();
-    setInterval(fetchData, updateInterval);
-    setInterval(fetchMetrics, updateInterval);
-    setInterval(fetchDeviceStatus, updateInterval * 3);
-    setInterval(fetchDeviceAlerts, updateInterval * 3);
+    startPolling();
 
     // Load subscription data when the tab is shown
     document.getElementById('subscription-tab').addEventListener('shown.bs.tab', function () {
@@ -507,11 +515,23 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
+document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+        stopPolling();
+    } else {
+        fetchData();
+        fetchMetrics();
+        fetchDeviceAlerts();
+        startPolling();
+    }
+});
+
 // WebSocket Connection
 function connectWebSocket() {
     ws = new WebSocket('ws://' + window.location.host + '/ws');
 
     ws.onopen = function() {
+        wsConnected = true;
         console.log('WebSocket connected');
     };
 
@@ -529,6 +549,7 @@ function connectWebSocket() {
     };
 
     ws.onclose = function() {
+        wsConnected = false;
         console.log('WebSocket disconnected, reconnecting...');
         setTimeout(connectWebSocket, 3000);
     };
@@ -574,13 +595,7 @@ function updateRealtimeData(deviceData) {
 }
 
 function updateDeviceAlerts(alertData) {
-    try {
-        const deviceName = alertData.deviceName;
-        const alerts = alertData.alerts;
-        fetchDeviceAlerts();
-    } catch (e) {
-        // Silent fail
-    }
+    // WebSocket 提供实时告警，HTTP 轮询 30s 周期负责同步
 }
 
 function formatNumber(num) {
@@ -739,6 +754,7 @@ async function fetchMetrics() {
             const cpuUsage = data.system.cpu_usage || 0;
             updateMetricBar('cpuBar', 'cpuValue', cpuUsage.toFixed(1), '%', 'cpu');
             updateMetricBar('memoryBar', 'memoryValue', memUsage.toFixed(1), ' MB', 'memory');
+
         }
     } catch (e) {
         // Silent fail
@@ -773,16 +789,6 @@ function updateMetricBar(barId, valueId, value, unit, type) {
     }
 
     valueElement.textContent = value + unit;
-}
-
-async function fetchDeviceStatus() {
-    try {
-        const res = await fetch('/api/device-status');
-        const data = await res.json();
-        const devices = data.devices || [];
-    } catch (e) {
-        // Silent fail
-    }
 }
 
 async function fetchDeviceAlerts() {

@@ -8,14 +8,15 @@ type Metrics struct {
 
 // SystemMetrics 系统指标
 type SystemMetrics struct {
-	CPUPercent  float64 `json:"cpu_percent"`
-	MemoryUsage float64 `json:"memory_usage_mb"`
+	CPUPercent  float64 `json:"cpu_usage"`
+	MemoryUsage float64 `json:"memory_usage"`
 	Goroutines  int     `json:"goroutines"`
 	Uptime      int64   `json:"uptime_seconds"`
 }
 
-// ApplicationMetrics 应用指标
+// ApplicationMetrics 应用层指标
 type ApplicationMetrics struct {
+	GoHeapMB              int64            `json:"go_heap_mb"`
 	MQTTMessagesReceived  int64            `json:"mqtt_messages_received"`
 	MQTTMessagesProcessed int64            `json:"mqtt_messages_processed"`
 	MQTTMessagesFiltered  int64            `json:"mqtt_messages_filtered"`

@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -43,6 +44,17 @@ func main() {
 	if err != nil {
 		log.Fatalf("配置初始化失败: %v", err)
 	}
+
+	limitMB := int64(appConfig.MaxMemoryMB)
+	if limitMB <= 0 {
+		limitMB = 32
+	}
+	goLimitMB := limitMB * 4
+	if goLimitMB < 128 {
+		goLimitMB = 128
+	}
+	debug.SetMemoryLimit(goLimitMB * 1024 * 1024)
+	log.Printf("Go runtime memory limit set to %d MB (RSS alert threshold: %d MB)", goLimitMB, limitMB)
 
 	components, err := initComponents(appConfig)
 	if err != nil {
@@ -100,6 +112,7 @@ func initComponents(appConfig *config.Config) (*Components, error) {
 	}
 
 	serverInstance := server.NewServer(database.Table, appConfig, monitorInstance, retentionManager, alertNotifier, resourceMonitor)
+	serverInstance.SeedDeviceStatusCache()
 
 	mqttClient, err := mqtt.NewClient(appConfig, monitorInstance, analyzerInstance)
 	if err != nil {
@@ -107,6 +120,7 @@ func initComponents(appConfig *config.Config) (*Components, error) {
 	} else {
 		// 启动广播监听通道
 		serverInstance.StartBroadcast(mqttClient.BroadcastChan())
+		mqttClient.SetOnRecordStored(serverInstance.OnRecordStored)
 		if err := mqttClient.Subscribe(mqtt.GetTopics(appConfig)); err != nil {
 			log.Printf("MQTT订阅失败: %v", err)
 		}

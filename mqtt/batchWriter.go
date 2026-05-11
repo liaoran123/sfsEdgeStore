@@ -17,11 +17,12 @@ type BatchWriter struct {
 	monitor   *monitor.Monitor   // 监控器
 	analyzer  *analyzer.Analyzer // 分析器
 
-	mu             sync.Mutex             // 互斥锁，保护 pendingRecords 访问安全
-	pendingRecords []*map[string]any      // 待写入记录缓冲区
-	lastBatchTime  time.Time              // 上次写入时间
-	stopChan       chan struct{}          // 用于停止 flushLoop() 定时写入协程。
-	broadcastChan  chan *BroadcastMessage // 广播通道：设备数据 + 告警 + 其他信息。所有信息的通道。
+	mu             sync.Mutex                               // 互斥锁，保护 pendingRecords 访问安全
+	pendingRecords []*map[string]any                        // 待写入记录缓冲区
+	lastBatchTime  time.Time                                // 上次写入时间
+	stopChan       chan struct{}                            // 用于停止 flushLoop() 定时写入协程。
+	broadcastChan  chan *BroadcastMessage                   // 广播通道：设备数据 + 告警 + 其他信息。所有信息的通道。
+	OnRecordStored func(deviceName string, timestamp int64) // 记录存储后的回调
 }
 
 func NewBatchWriter(monitor *monitor.Monitor, analyzer *analyzer.Analyzer) (*BatchWriter, error) {
@@ -100,6 +101,8 @@ func (w *BatchWriter) doWrite(records []*map[string]any) {
 	insertedCount, err := database.Insert(database.Table, records)
 	if err != nil {
 		w.monitor.RecordError("db_write_failed", err.Error())
+		// 释放 records 引用，允许 GC 回收
+		records = nil
 		return
 	}
 	// 检查是否所有记录都成功插入
@@ -109,13 +112,29 @@ func (w *BatchWriter) doWrite(records []*map[string]any) {
 	w.monitor.IncrementTotalRecordsStored(int64(insertedCount))    // 总存储记录数 +n
 	w.monitor.IncrementMQTTMessagesProcessed(int64(insertedCount)) // MQTT 处理消息数 +n
 
-	// 广播实时数据到 Web 端
-	NewBroadcastMessage(w.broadcastChan, "device_data", map[string]any{"records": records})
+	if w.OnRecordStored != nil {
+		for _, record := range records {
+			deviceName, _ := (*record)["deviceName"].(string)
+			timestamp, _ := (*record)["timestamp"].(int64)
+			if deviceName != "" && timestamp > 0 {
+				w.OnRecordStored(deviceName, timestamp)
+			}
+		}
+	}
+
+	// 广播实时数据到 Web 端（仅广播前 20 条，避免内存堆积）
+	broadcastCount := min(len(records), 20)
+	broadcastRecords := make([]*map[string]any, broadcastCount)
+	copy(broadcastRecords, records[:broadcastCount])
+	NewBroadcastMessage(w.broadcastChan, "device_data", map[string]any{"records": broadcastRecords, "total": len(records)})
 
 	// 数据分析，仅当记录数小于等于 50 时才分析
 	if w.analyzer != nil && w.analyzer.IsEnabled() && len(records) <= 50 {
 		w.analyzeData(records)
 	}
+
+	// 释放 records 引用，允许 GC 回收
+	records = nil
 }
 
 // Stop 停止批量写入层，等待所有待写入记录处理完成

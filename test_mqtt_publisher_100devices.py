@@ -10,16 +10,16 @@ MQTT_BROKER = "localhost"
 MQTT_PORT = 1883
 
 DEVICE_TYPES = [
-    {"type": "temperature", "topic": "edgex/events/device/temperature-sensor-{:03d}", "min": -40, "max": 125, "unit": "°C", "valueType": "Float64", "interval": (3, 10)},
-    {"type": "humidity", "topic": "edgex/events/device/humidity-sensor-{:03d}", "min": 0, "max": 100, "unit": "%", "valueType": "Float64", "interval": (5, 15)},
-    {"type": "pressure", "topic": "edgex/events/device/pressure-sensor-{:03d}", "min": 900, "max": 1100, "unit": "hPa", "valueType": "Float64", "interval": (5, 10)},
-    {"type": "vibration", "topic": "edgex/events/device/vibration-sensor-{:03d}", "min": 0, "max": 10, "unit": "mm/s", "valueType": "Float64", "interval": (1, 3)},
-    {"type": "energy", "topic": "edgex/events/device/energy-meter-{:03d}", "min": 0, "max": 100, "unit": "kWh", "valueType": "Float64", "interval": (10, 60)},
-    {"type": "flow", "topic": "edgex/events/device/flow-sensor-{:03d}", "min": 0, "max": 100, "unit": "L/min", "valueType": "Float64", "interval": (3, 8)},
-    {"type": "level", "topic": "edgex/events/device/level-sensor-{:03d}", "min": 0, "max": 100, "unit": "%", "valueType": "Float64", "interval": (5, 15)},
-    {"type": "ph", "topic": "edgex/events/device/ph-sensor-{:03d}", "min": 0, "max": 14, "unit": "pH", "valueType": "Float64", "interval": (5, 10)},
-    {"type": "co2", "topic": "edgex/events/device/co2-sensor-{:03d}", "min": 0, "max": 5000, "unit": "ppm", "valueType": "Float64", "interval": (5, 15)},
-    {"type": "light", "topic": "edgex/events/device/light-sensor-{:03d}", "min": 0, "max": 10000, "unit": "lux", "valueType": "Float64", "interval": (3, 10)}
+    {"type": "temperature", "topic": "edgex/events/core/device/temperature-sensor-{:03d}", "min": -40, "max": 125, "unit": "°C", "valueType": "Float64", "interval": (0.1, 0.5)},
+    {"type": "humidity", "topic": "edgex/events/core/device/humidity-sensor-{:03d}", "min": 0, "max": 100, "unit": "%", "valueType": "Float64", "interval": (0.1, 0.5)},
+    {"type": "pressure", "topic": "edgex/events/core/device/pressure-sensor-{:03d}", "min": 900, "max": 1100, "unit": "hPa", "valueType": "Float64", "interval": (0.1, 0.5)},
+    {"type": "vibration", "topic": "edgex/events/core/device/vibration-sensor-{:03d}", "min": 0, "max": 10, "unit": "mm/s", "valueType": "Float64", "interval": (0.1, 0.5)},
+    {"type": "energy", "topic": "edgex/events/core/device/energy-meter-{:03d}", "min": 0, "max": 100, "unit": "kWh", "valueType": "Float64", "interval": (0.1, 0.5)},
+    {"type": "flow", "topic": "edgex/events/core/device/flow-sensor-{:03d}", "min": 0, "max": 100, "unit": "L/min", "valueType": "Float64", "interval": (0.1, 0.5)},
+    {"type": "level", "topic": "edgex/events/core/device/level-sensor-{:03d}", "min": 0, "max": 100, "unit": "%", "valueType": "Float64", "interval": (0.1, 0.5)},
+    {"type": "ph", "topic": "edgex/events/core/device/ph-sensor-{:03d}", "min": 0, "max": 14, "unit": "pH", "valueType": "Float64", "interval": (0.1, 0.5)},
+    {"type": "co2", "topic": "edgex/events/core/device/co2-sensor-{:03d}", "min": 0, "max": 5000, "unit": "ppm", "valueType": "Float64", "interval": (0.1, 0.5)},
+    {"type": "light", "topic": "edgex/events/core/device/light-sensor-{:03d}", "min": 0, "max": 10000, "unit": "lux", "valueType": "Float64", "interval": (0.1, 0.5)}
 ]
 
 TOTAL_DEVICES = 100

@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"time"
 
 	"sfsEdgeStore/backup"
 	"sfsEdgeStore/common"
@@ -52,75 +51,9 @@ func (s *Server) handleQueryReadings(w http.ResponseWriter, r *http.Request) {
 	}
 	defer readings.Release()
 
-	readingsMap := make([]map[string]any, len(readings))
-	for i, reading := range readings {
-		readingsMap[i] = reading
-	}
-
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"count":    len(readings),
-		"readings": readingsMap,
-	})
-}
-
-// handleDeviceStatus 处理查询状态的请求
-/*
-SELECT deviceName, COUNT(*) as dataCount, MAX(timestamp) as lastActive
-FROM table
-GROUP BY deviceName
-*/
-func (s *Server) handleDeviceStatus(w http.ResponseWriter, r *http.Request) {
-	s.Monitor.IncrementHTTPRequests()
-	w.Header().Set("Content-Type", "application/json")
-
-	records, err := database.QueryRecords(database.Table, "", "", "", false)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]any{"status": "error", "message": err.Error()})
-		return
-	}
-	defer records.Release()
-
-	deviceMap := make(map[string]*map[string]any)
-	for _, rec := range records {
-		deviceName, ok := rec["deviceName"].(string)
-		if !ok {
-			continue
-		}
-		if _, exists := deviceMap[deviceName]; !exists {
-			deviceMap[deviceName] = &map[string]any{
-				"deviceName": deviceName,
-				"isOnline":   false,
-				"lastActive": rec["timestamp"],
-				"dataCount":  1,
-			}
-		} else {
-			(*deviceMap[deviceName])["dataCount"] = (*deviceMap[deviceName])["dataCount"].(int) + 1
-			ts := rec["timestamp"].(int64)
-			lastActive := (*deviceMap[deviceName])["lastActive"].(int64)
-			if ts > lastActive {
-				(*deviceMap[deviceName])["lastActive"] = ts
-			}
-		}
-	}
-
-	now := time.Now().UnixNano()
-	offlineThreshold := 5 * time.Minute
-	for _, device := range deviceMap {
-		lastActive := (*device)["lastActive"].(int64)
-		if now-lastActive < offlineThreshold.Nanoseconds() {
-			(*device)["isOnline"] = true
-		}
-	}
-
-	var devices []map[string]any
-	for _, device := range deviceMap {
-		devices = append(devices, *device)
-	}
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":  "success",
-		"devices": devices,
+		"readings": readings,
 	})
 }
 

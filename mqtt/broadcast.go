@@ -38,8 +38,13 @@ func PutBroadcastMessage(msg *BroadcastMessage) {
 }
 
 // MarshalJSON 序列化为 JSON 字节
+/*
+因为 Alias 是一个新类型，它 不会继承 BroadcastMessage 的 MarshalJSON() 方法。
+所以当 json.Marshal() 接收到 *Alias 类型时，发现它没有实现 json.Marshaler 接口，
+就会使用默认的 JSON 序列化逻辑（逐个字段序列化），从而 避免了递归调用 。
+*/
 func (m *BroadcastMessage) MarshalJSON() ([]byte, error) {
-	type Alias BroadcastMessage
+	type Alias BroadcastMessage //必须是新类型，否则会递归调用 MarshalJSON() 方法，导致栈溢出
 	return json.Marshal((*Alias)(m))
 }
 

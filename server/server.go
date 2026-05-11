@@ -15,13 +15,14 @@ import (
 
 // Server 结构体
 type Server struct {
-	Table           *engine.Table
-	Config          *config.Config
-	Monitor         *monitor.Monitor
-	RetentionMgr    *retention.RetentionManager
-	AlertNotifier   *alert.Notifier
-	ResourceMonitor *resource.ResourceMonitor
-	wsManager       *WSManager
+	Table             *engine.Table
+	Config            *config.Config
+	Monitor           *monitor.Monitor
+	RetentionMgr      *retention.RetentionManager
+	AlertNotifier     *alert.Notifier
+	ResourceMonitor   *resource.ResourceMonitor
+	wsManager         *WSManager
+	deviceStatusCache *deviceStatusCache
 }
 
 // NewServer 创建一个新的服务器实例
@@ -30,13 +31,14 @@ func NewServer(table *engine.Table, cfg *config.Config, monitor *monitor.Monitor
 	go wsManager.Run()
 
 	return &Server{
-		Table:           table,
-		Config:          cfg,
-		Monitor:         monitor,
-		RetentionMgr:    retentionMgr,
-		AlertNotifier:   alertNotifier,
-		ResourceMonitor: resourceMonitor,
-		wsManager:       wsManager,
+		Table:             table,
+		Config:            cfg,
+		Monitor:           monitor,
+		RetentionMgr:      retentionMgr,
+		AlertNotifier:     alertNotifier,
+		ResourceMonitor:   resourceMonitor,
+		wsManager:         wsManager,
+		deviceStatusCache: newDeviceStatusCache(),
 	}
 }
 

@@ -109,6 +109,7 @@ func (m *Monitor) CollectMetrics(resourceUsage *ResourceUsageData) Metrics {
 			Uptime:      int64(time.Since(m.startTime).Seconds()), // 运行时间（秒）
 		},
 		Application: ApplicationMetrics{
+			GoHeapMB:              int64(ms.Alloc / 1024 / 1024),
 			MQTTMessagesReceived:  m.mqttReceived.Load(),  // MQTT 接收消息数
 			MQTTMessagesProcessed: m.mqttProcessed.Load(), // MQTT 处理消息数
 			MQTTMessagesFiltered:  m.mqttFiltered.Load(),  // MQTT 过滤消息数

@@ -4,12 +4,10 @@ import time
 import random
 from datetime import datetime
 
-# MQTT 配置
 BROKER = "localhost"
 PORT = 1883
 CLIENT_ID = "sfsedgestore-test-publisher-enhanced"
 
-# 设备列表
 devices = [
     "temperature-sensor-001",
     "humidity-sensor-001",
@@ -18,7 +16,6 @@ devices = [
     "energy-meter-001"
 ]
 
-# 资源类型和正常范围
 resources = {
     "Temperature": {"min": 15.0, "max": 35.0, "unit": "°C"},
     "Humidity": {"min": 30.0, "max": 80.0, "unit": "%"},
@@ -27,39 +24,29 @@ resources = {
     "Energy": {"min": 50.0, "max": 600.0, "unit": "kWh"}
 }
 
-# 异常数据类型
 exception_types = [
-    "out_of_range_high",  # 超出上限
-    "out_of_range_low",   # 超出下限
-    "sudden_jump",        # 突然跳变
-    "missing_value",      # 缺失值
-    "invalid_format"      # 无效格式
+    "out_of_range_high",
+    "out_of_range_low",
+    "sudden_jump",
+    "missing_value",
+    "invalid_format"
 ]
 
 def create_edgex_event(device_name, resource_name, value, is_exception=False, exception_type=None):
-    """创建 EdgeX Foundry 格式的事件"""
-    timestamp = int(time.time() * 1000000000)  # 纳秒时间戳
-    
-    # 处理异常数据
+    timestamp = int(time.time() * 1000000000)
     if is_exception:
         if exception_type == "out_of_range_high":
-            # 生成超出上限的值
             range_info = resources[resource_name]
             value = range_info["max"] * 2
         elif exception_type == "out_of_range_low":
-            # 生成低于下限的值
             range_info = resources[resource_name]
             value = range_info["min"] * 0.5
         elif exception_type == "sudden_jump":
-            # 生成突然跳变的值
-            value = random.uniform(1000, 10000)  # 大幅跳变
+            value = random.uniform(1000, 10000)
         elif exception_type == "missing_value":
-            # 缺失值
             value = ""
         elif exception_type == "invalid_format":
-            # 无效格式
             value = "invalid_value"
-    
     event = {
         "apiVersion": "v2",
         "id": f"event-{random.randint(100000, 999999)}",
@@ -81,43 +68,46 @@ def create_edgex_event(device_name, resource_name, value, is_exception=False, ex
     }
     return event
 
-def on_connect(client, userdata, flags, rc):
-    print(f"已连接到 MQTT Broker (返回码: {rc})")
+connected_flag = False
 
-def on_publish(client, userdata, mid):
-    pass  # 静默模式，减少日志输出
+def on_connect(client, userdata, flags, rc, properties=None):
+    global connected_flag
+    if rc == 0:
+        connected_flag = True
+        print(f"已连接到 MQTT Broker")
+    else:
+        print(f"连接失败，返回码: {rc}")
 
 def main():
+    global connected_flag
     print("启动增强版 MQTT 测试发布器...")
     print(f"Broker: {BROKER}:{PORT}")
     print("发送主题: edgex/events/core/{device}")
     print("包含正常数据和异常数据")
     print("")
-    
-    # 创建 MQTT 客户端
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, CLIENT_ID)
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, CLIENT_ID)
     client.on_connect = on_connect
-    client.on_publish = on_publish
-    
     try:
-        # 连接到 broker
         client.connect(BROKER, PORT, 60)
         client.loop_start()
-        
-        # 等待连接
-        time.sleep(1)
-        
+        for _ in range(30):
+            if connected_flag:
+                break
+            time.sleep(0.2)
+        if not connected_flag:
+            print("连接 MQTT Broker 超时")
+            return
         print("开始发送测试数据... (按 Ctrl+C 停止)")
         print("-" * 80)
-        
         message_count = 0
         exception_count = 0
-        
         while True:
-            # 随机选择设备
+            if not client.is_connected():
+                print("MQTT 连接断开，尝试重新连接...")
+                client.reconnect()
+                time.sleep(2)
+                continue
             device = random.choice(devices)
-            
-            # 确定设备对应的资源类型
             if "temperature" in device:
                 resource = "Temperature"
             elif "humidity" in device:
@@ -130,55 +120,34 @@ def main():
                 resource = "Energy"
             else:
                 resource = random.choice(list(resources.keys()))
-            
-            # 决定是否发送异常数据 (10% 概率)
             is_exception = random.random() < 0.1
             exception_type = None
-            
             if is_exception:
                 exception_type = random.choice(exception_types)
                 exception_count += 1
-            
-            # 生成数据值
             if not is_exception:
-                # 生成正常范围内的值，添加一些小的波动
                 range_info = resources[resource]
                 value = round(random.uniform(range_info["min"], range_info["max"]), 2)
             else:
-                # 异常数据将在 create_edgex_event 中处理
                 value = 0
-            
-            # 创建 EdgeX 事件
             event = create_edgex_event(device, resource, value, is_exception, exception_type)
-            
-            # 发布到 MQTT
             topic = f"edgex/events/core/{device}"
             wrapped_message = {
                 "messageType": "event",
                 "payload": event
             }
             payload = json.dumps(wrapped_message)
-            
-            result = client.publish(topic, payload, qos=1)
-            result.wait_for_publish()
-            
+            client.publish(topic, payload, qos=0)
             message_count += 1
-            
-            # 打印日志
             if is_exception:
                 print(f"[{message_count}] {device} - {resource}: {event['readings'][0]['value']} (异常: {exception_type})")
             else:
                 print(f"[{message_count}] {device} - {resource}: {value} {resources[resource]['unit']}")
-            
-            # 随机间隔，模拟真实设备的数据发送频率
-            time.sleep(random.uniform(0.5, 2.0))
-            
-            # 每发送 50 条消息，打印统计信息
+            time.sleep(random.uniform(2.0, 6.0))
             if message_count % 50 == 0:
                 print("-" * 80)
                 print(f"统计: 已发送 {message_count} 条消息，其中 {exception_count} 条异常数据")
                 print("-" * 80)
-            
     except KeyboardInterrupt:
         print("")
         print("收到停止信号")

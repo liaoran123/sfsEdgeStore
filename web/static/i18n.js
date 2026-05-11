@@ -219,7 +219,7 @@ const i18n = {
         // MQTT状态
         'received': '已接收',
         'processed': '已处理',
-        'total.messages': '总消息数',
+        'total.messages': '已接收消息',
         'valid.data': '有效数据',
         'filtered': '已过滤',
         'filtered.non.event': '非事件消息',
@@ -479,7 +479,7 @@ const i18n = {
         // MQTT Status
         'received': 'Received',
         'processed': 'Processed',
-        'total.messages': 'Total Messages',
+        'total.messages': 'Messages Received',
         'valid.data': 'Valid Data',
         'filtered': 'Filtered',
         'filtered.non.event': 'Non-Event Messages',

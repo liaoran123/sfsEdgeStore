@@ -56,13 +56,27 @@ func (c *Client) BroadcastChan() <-chan *BroadcastMessage {
 	return c.batchWriter.GetBroadcastChan()
 }
 
+// SetOnRecordStored 设置记录存储后的回调，由 server 层用于增量更新设备状态缓存
+func (c *Client) SetOnRecordStored(fn func(deviceName string, timestamp int64)) {
+	c.batchWriter.OnRecordStored = fn
+}
+
 // handleMessage 消息处理管道，接收所有 MQTT 消息，解析并处理事件
 // client 参数没有用到。这是 mqtt.MessageHandler 类型签名的要求，必须保留但可以改为 _ 表示忽略
 func (c *Client) handleMessage(_ mqtt.Client, msg mqtt.Message) {
+	// 每条消息都计入接收总数
+	c.batchWriter.monitor.IncrementMQTTMessagesReceived()
+
 	// 1. 解析 MQTT 消息
 	event, err := edgex.ProcessMessage(msg.Payload())
 	if err != nil {
 		log.Printf("Failed to process message: %v", err)
+		c.batchWriter.monitor.IncrementMQTTMessagesFiltered()
+		return
+	}
+	if event == nil {
+		// 非 event 类型消息被过滤
+		c.batchWriter.monitor.IncrementMQTTMessagesFiltered()
 		return
 	}
 	// 2. 处理事件，收集记录数据
