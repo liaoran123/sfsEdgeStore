@@ -13,7 +13,6 @@ import (
 	"sfsEdgeStore/alert"
 	"sfsEdgeStore/analyzer"
 	"sfsEdgeStore/auth"
-	"sfsEdgeStore/cli"
 	"sfsEdgeStore/config"
 	"sfsEdgeStore/configwizard"
 	"sfsEdgeStore/database"
@@ -137,8 +136,22 @@ func initComponents(appConfig *config.Config) (*Components, error) {
 	}, nil
 }
 
+func printWelcome() {
+	fmt.Print(`
+╔═══════════════════════════════════════════════════════════════╗
+║                    sfsEdgeStore 启动成功                       ║
+╠═══════════════════════════════════════════════════════════════╣
+║  轻量级工业物联网边缘数据存储适配器                             ║
+║  内存占用: <50MB | 极轻量 | 高可靠                              ║
+╠═══════════════════════════════════════════════════════════════╣
+║  Web 监控界面: http://localhost:8081                          ║
+║  停止方法: Ctrl+C                                              ║
+╚═══════════════════════════════════════════════════════════════╝
+`)
+}
+
 func startServices(c *Components, appConfig *config.Config) {
-	cli.PrintWelcome()
+	printWelcome()
 
 	log.Printf("MQTT Broker: %s", appConfig.MQTTBroker)
 	log.Printf("MQTT Topic: %s", appConfig.MQTTTopic)

@@ -3,7 +3,11 @@ package config
 import (
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -68,15 +72,15 @@ type Config struct {
 	// 自定义订阅主题
 	CustomTopics []string `json:"custom_topics,omitempty"`
 	// 数据同步配置
-	EnableDataSync         bool   `json:"enable_data_sync"`
-	DataSyncInterval       int    `json:"data_sync_interval_seconds"`
-	DataSyncBatchSize      int    `json:"data_sync_batch_size"`
-	DataSyncMaxRetryCount  int    `json:"data_sync_max_retry"`
-	DataSyncQueueDir       string `json:"data_sync_queue_dir,omitempty"`
-	DataSyncUploadMode     string `json:"data_sync_upload_mode"`     // "http" 或 "mqtt"
-	DataSyncBrokerURL      string `json:"data_sync_broker_url,omitempty"` // 云端 HTTP 端点或 MQTT Broker
-	DataSyncMQTTTopic      string `json:"data_sync_mqtt_topic,omitempty"` // 云端 MQTT 话题
-	DataSyncAuthToken      string `json:"data_sync_auth_token,omitempty"`
+	EnableDataSync        bool   `json:"enable_data_sync"`
+	DataSyncInterval      int    `json:"data_sync_interval_seconds"`
+	DataSyncBatchSize     int    `json:"data_sync_batch_size"`
+	DataSyncMaxRetryCount int    `json:"data_sync_max_retry"`
+	DataSyncQueueDir      string `json:"data_sync_queue_dir,omitempty"`
+	DataSyncUploadMode    string `json:"data_sync_upload_mode"`          // "http" 或 "mqtt"
+	DataSyncBrokerURL     string `json:"data_sync_broker_url,omitempty"` // 云端 HTTP 端点或 MQTT Broker
+	DataSyncMQTTTopic     string `json:"data_sync_mqtt_topic,omitempty"` // 云端 MQTT 话题
+	DataSyncAuthToken     string `json:"data_sync_auth_token,omitempty"`
 }
 
 // ThresholdConfig 阈值配置
@@ -183,7 +187,7 @@ func Load() (*Config, error) {
 		// 数据库场景默认值（极限生存模式，适合 128MB 以下内存设备）
 		DBScenario: ScenarioExtreme,
 		// 数据同步默认值
-		EnableDataSync: false,
+		EnableDataSync:        false,
 		DataSyncInterval:      60,
 		DataSyncBatchSize:     100,
 		DataSyncMaxRetryCount: 3,
@@ -209,7 +213,121 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
-// applySmartDefaults 应用智能默认值
+// getSystemMemoryMB 获取系统总内存（MB）
+func getSystemMemoryMB() uint64 {
+	if runtime.GOOS == "windows" {
+		return getWindowsSystemMemoryMB()
+	}
+	if runtime.GOOS == "linux" {
+		return getLinuxSystemMemoryMB()
+	}
+	if runtime.GOOS == "darwin" {
+		return getDarwinSystemMemoryMB()
+	}
+
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
+	return memStats.Sys / (1024 * 1024)
+}
+
+// getWindowsSystemMemoryMB 获取 Windows 系统总内存
+func getWindowsSystemMemoryMB() uint64 {
+	cmd := "wmic computersystem get totalphysicalmemory"
+	output, err := runCommand(cmd)
+	if err != nil {
+		log.Printf("Failed to get system memory: %v", err)
+		return 8192
+	}
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.Contains(strings.ToLower(line), "totalphysicalmemory") {
+			continue
+		}
+		if val, err := strconv.ParseUint(line, 10, 64); err == nil {
+			return val / (1024 * 1024)
+		}
+	}
+	return 8192
+}
+
+// getLinuxSystemMemoryMB 获取 Linux 系统总内存
+func getLinuxSystemMemoryMB() uint64 {
+	data, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		log.Printf("Failed to read /proc/meminfo: %v", err)
+		return 8192
+	}
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "MemTotal:") {
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				if val, err := strconv.ParseUint(parts[1], 10, 64); err == nil {
+					return val / 1024
+				}
+			}
+		}
+	}
+	return 8192
+}
+
+// getDarwinSystemMemoryMB 获取 macOS 系统总内存
+func getDarwinSystemMemoryMB() uint64 {
+	cmd := "sysctl hw.memsize"
+	output, err := runCommand(cmd)
+	if err != nil {
+		log.Printf("Failed to get system memory: %v", err)
+		return 8192
+	}
+	parts := strings.Fields(output)
+	if len(parts) >= 2 {
+		if val, err := strconv.ParseUint(parts[1], 10, 64); err == nil {
+			return val / (1024 * 1024)
+		}
+	}
+	return 8192
+}
+
+// runCommand 执行命令并返回输出
+func runCommand(cmd string) (string, error) {
+	c := exec.Command("cmd", "/c", cmd)
+	output, err := c.CombinedOutput()
+	if err != nil {
+		return "", err
+	}
+	return string(output), nil
+}
+
+// detectSystemMemory 检测系统内存并返回推荐配置
+func detectSystemMemory() (totalMB uint64, recommendedScenario string, recommendedMaxMemoryMB float64) {
+	totalMB = getSystemMemoryMB()
+
+	switch {
+	case totalMB <= 64:
+		recommendedScenario = ScenarioEmbedded
+		recommendedMaxMemoryMB = float64(totalMB) * 0.6
+	case totalMB <= 128:
+		recommendedScenario = ScenarioExtreme
+		recommendedMaxMemoryMB = float64(totalMB) * 0.5
+	case totalMB <= 256:
+		recommendedScenario = ScenarioIoT
+		recommendedMaxMemoryMB = float64(totalMB) * 0.4
+	case totalMB <= 512:
+		recommendedScenario = ScenarioEdge
+		recommendedMaxMemoryMB = float64(totalMB) * 0.3
+	case totalMB <= 1024:
+		recommendedScenario = ScenarioDefault
+		recommendedMaxMemoryMB = float64(totalMB) * 0.2
+	default:
+		recommendedScenario = ScenarioDefault
+		recommendedMaxMemoryMB = float64(totalMB) * 0.15
+	}
+
+	return totalMB, recommendedScenario, recommendedMaxMemoryMB
+}
+
+// applySmartDefaults 应用智能默认值（自动检测系统内存）
 func applySmartDefaults(cfg *Config) {
 	if cfg.MQTTBroker == "" {
 		cfg.MQTTBroker = "tcp://localhost:1883"
@@ -226,6 +344,22 @@ func applySmartDefaults(cfg *Config) {
 			cfg.DBPath = "data"
 		}
 	}
+
+	totalMB, recommendedScenario, recommendedMaxMemoryMB := detectSystemMemory()
+	log.Printf("Auto-detected system memory: %d MB", totalMB)
+
+	if cfg.DBScenario == "" {
+		cfg.DBScenario = recommendedScenario
+		log.Printf("Auto-set DB scenario to: %s (based on memory detection)", cfg.DBScenario)
+	}
+
+	if cfg.MaxMemoryMB <= 0 {
+		cfg.MaxMemoryMB = recommendedMaxMemoryMB
+		log.Printf("Auto-set max memory limit to: %.2f MB", cfg.MaxMemoryMB)
+	}
+
+	log.Printf("Recommended configuration for %d MB system: scenario=%s, max_memory=%.2f MB",
+		totalMB, recommendedScenario, recommendedMaxMemoryMB)
 
 	ensureDataDir(cfg.DBPath)
 }

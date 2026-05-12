@@ -3,14 +3,11 @@ package resource
 import (
 	"fmt"
 	"log"
-	"os"
 	"runtime"
 	"sync"
 	"time"
 
 	"sfsEdgeStore/config"
-
-	"github.com/shirou/gopsutil/v3/process"
 )
 
 type ResourceUsage struct {
@@ -29,7 +26,6 @@ type ResourceMonitor struct {
 	mutex     sync.Mutex
 	lastUsage ResourceUsage
 	alertSent map[string]bool
-	proc      *process.Process
 }
 
 type MonitorInterface interface {
@@ -109,8 +105,11 @@ func (rm *ResourceMonitor) checkResources() {
 }
 
 func (rm *ResourceMonitor) collectUsage() ResourceUsage {
-	memoryMB := rm.getProcessMemoryMB()
-	cpuPercent := rm.getCPUPercent()
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+
+	memoryMB := float64(ms.HeapInuse) / 1024 / 1024
+	cpuPercent := rm.estimateCPUPercent()
 
 	return ResourceUsage{
 		MemoryMB:      memoryMB,
@@ -121,51 +120,38 @@ func (rm *ResourceMonitor) collectUsage() ResourceUsage {
 	}
 }
 
-func (rm *ResourceMonitor) getProcess() *process.Process {
-	if rm.proc != nil {
-		return rm.proc
-	}
-	p, err := process.NewProcess(int32(os.Getpid()))
-	if err != nil {
-		return nil
-	}
-	rm.proc = p
-	return p
-}
+var lastCPUTime time.Time
+var lastGoroutines int
 
-func (rm *ResourceMonitor) getProcessMemoryMB() float64 {
-	p := rm.getProcess()
-	if p == nil {
-		var ms runtime.MemStats
-		runtime.ReadMemStats(&ms)
-		return float64(ms.Alloc) / 1024 / 1024
-	}
+func (rm *ResourceMonitor) estimateCPUPercent() float64 {
+	currentTime := time.Now()
+	currentGoroutines := runtime.NumGoroutine()
 
-	mem, err := p.MemoryInfo()
-	if err != nil {
-		var ms runtime.MemStats
-		runtime.ReadMemStats(&ms)
-		return float64(ms.Alloc) / 1024 / 1024
-	}
-
-	// RSS (Resident Set Size) 是进程当前使用的物理内存
-	return float64(mem.RSS) / 1024 / 1024
-}
-
-func (rm *ResourceMonitor) getCPUPercent() float64 {
-	p := rm.getProcess()
-	if p == nil {
+	if lastCPUTime.IsZero() {
+		lastCPUTime = currentTime
+		lastGoroutines = currentGoroutines
 		return 0
 	}
-	percent, err := p.Percent(0)
-	if err != nil {
+
+	elapsed := currentTime.Sub(lastCPUTime).Seconds()
+	goroutineChange := currentGoroutines - lastGoroutines
+
+	lastCPUTime = currentTime
+	lastGoroutines = currentGoroutines
+
+	if elapsed < 0.001 {
 		return 0
 	}
-	numCPU := runtime.NumCPU()
-	if numCPU > 0 {
-		percent = percent / float64(numCPU)
+
+	estimatedCPU := float64(goroutineChange) / elapsed * 10
+	if estimatedCPU < 0 {
+		estimatedCPU = 0
 	}
-	return percent
+	if estimatedCPU > 100 {
+		estimatedCPU = 100
+	}
+
+	return estimatedCPU
 }
 
 func (rm *ResourceMonitor) checkMemory(usage ResourceUsage) {
