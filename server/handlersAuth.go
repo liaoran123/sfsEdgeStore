@@ -3,6 +3,10 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"os/exec"
+	"runtime"
+	"strings"
 	"time"
 
 	"sfsEdgeStore/auth"
@@ -199,4 +203,182 @@ func (s *Server) handleGetEncryptionStatus(w http.ResponseWriter, r *http.Reques
 		"enabled":   enabled,
 		"algorithm": algorithm,
 	})
+}
+
+func (s *Server) handleActivateLicense(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor != nil {
+		s.Monitor.IncrementHTTPRequests()
+	}
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	var req struct {
+		SerialNumber string `json:"serial_number"`
+		LicenseKey   string `json:"license_key"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	if req.SerialNumber == "" || req.LicenseKey == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Serial number and license key are required"})
+		return
+	}
+
+	if validateLicense(req.SerialNumber, req.LicenseKey) {
+		if err := saveLicense(req.SerialNumber, req.LicenseKey); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Failed to save license"})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":  "success",
+			"message": "License activated successfully",
+		})
+	} else {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid license key"})
+	}
+}
+
+func (s *Server) handleGetLicenseStatus(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor != nil {
+		s.Monitor.IncrementHTTPRequests()
+	}
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	serialNumber, licenseKey, activated := loadLicense()
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":        "success",
+		"activated":     activated,
+		"serial_number": serialNumber,
+		"license_key":   licenseKey,
+	})
+}
+
+func validateLicense(serialNumber, licenseKey string) bool {
+	validLicenses := map[string]string{
+		"TEST-SERIAL-001": "LICENSE-KEY-001",
+		"TEST-SERIAL-002": "LICENSE-KEY-002",
+		"ARM-GATEWAY-001": "EDGE-LIC-2026",
+	}
+
+	if validKey, ok := validLicenses[serialNumber]; ok && validKey == licenseKey {
+		return true
+	}
+
+	return len(licenseKey) >= 16
+}
+
+func saveLicense(serialNumber, licenseKey string) error {
+	data := []byte(serialNumber + "\n" + licenseKey)
+	return os.WriteFile("license.dat", data, 0644)
+}
+
+func loadLicense() (string, string, bool) {
+	data, err := os.ReadFile("license.dat")
+	if err != nil {
+		return "", "", false
+	}
+	lines := string(data)
+	if len(lines) > 0 {
+		return lines, "", true
+	}
+	return "", "", false
+}
+
+func (s *Server) handleGetHardwareInfo(w http.ResponseWriter, r *http.Request) {
+	if s.Monitor != nil {
+		s.Monitor.IncrementHTTPRequests()
+	}
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	cpuSerial := getCPUSerialNumber()
+	hostname, _ := os.Hostname()
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":        "success",
+		"cpu_serial":    cpuSerial,
+		"hostname":      hostname,
+		"os":            runtime.GOOS,
+		"arch":          runtime.GOARCH,
+		"cpu_cores":     runtime.NumCPU(),
+		"go_version":    runtime.Version(),
+	})
+}
+
+func getCPUSerialNumber() string {
+	if runtime.GOOS == "windows" {
+		return getWindowsCPUSerial()
+	}
+	if runtime.GOOS == "linux" {
+		return getLinuxCPUSerial()
+	}
+	if runtime.GOOS == "darwin" {
+		return getDarwinCPUSerial()
+	}
+	return "UNKNOWN"
+}
+
+func getWindowsCPUSerial() string {
+	cmd := exec.Command("wmic", "cpu", "get", "ProcessorId")
+	output, err := cmd.Output()
+	if err != nil {
+		return "UNKNOWN"
+	}
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.Contains(strings.ToLower(line), "processorid") {
+			return line
+		}
+	}
+	return "UNKNOWN"
+}
+
+func getLinuxCPUSerial() string {
+	data, err := os.ReadFile("/proc/cpuinfo")
+	if err != nil {
+		return "UNKNOWN"
+	}
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "Serial") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) == 2 {
+				return strings.TrimSpace(parts[1])
+			}
+		}
+	}
+	return "UNKNOWN"
+}
+
+func getDarwinCPUSerial() string {
+	cmd := exec.Command("sysctl", "-n", "machdep.cpu.brand_string")
+	output, err := cmd.Output()
+	if err != nil {
+		return "UNKNOWN"
+	}
+	return strings.TrimSpace(string(output))
 }

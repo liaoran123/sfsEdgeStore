@@ -92,6 +92,13 @@ func (s *Server) registerRoutes() {
 	http.HandleFunc("/api/subscription/test", s.handleSubscriptionTest)
 	http.HandleFunc("/api/subscription/themes", s.handleSubscriptionThemes)
 
+	// 授权激活
+	http.HandleFunc("/api/auth/activate", s.handleActivateLicense)
+	http.HandleFunc("/api/auth/license/status", s.handleGetLicenseStatus)
+
+	// 硬件信息
+	http.HandleFunc("/api/hardware/info", s.handleGetHardwareInfo)
+
 	// WebSocket
 	http.HandleFunc("/ws", s.handleWebSocket)
 }

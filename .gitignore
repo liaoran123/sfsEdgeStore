@@ -39,20 +39,36 @@ build/
 # Environment variables
 .env
 
-# Commercial modules (not open source)
+# ------------------------------
+# Commercial/Private modules (NOT open source)
+# ------------------------------
+# Commercial features
 commercial/
+cloudsync/
 
-# Word documents
-word/
-tech-book/
+# License/Activation files
+license.dat
+license.json
+*.lic
+activation_keys/
+
+# Sales and business documents
 销售方法/
 商业分析/
-*/doc/
-todo.md
-*/doc/
+商业方案/
+
+# Private documentation
 技术文档/
+tech-book/
+word/
 tech-*/
 sfsdb参考代码/
 相关资料/
+
+# Data directories
 data*/
-cloudsync/
+
+# Temporary/test files
+todo.md
+*.test
+*.tmp

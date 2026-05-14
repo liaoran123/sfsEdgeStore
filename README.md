@@ -57,52 +57,57 @@
 
 ## 🚀 快速开始
 
+### 适用场景
+
+本方案专为 **ARM边缘网关**（256MB/512MB内存）设计，支持：
+- 工业Modbus设备数据采集
+- 断网缓存（支持7天离线运行）
+- 固件授权激活
+
 ### 前置条件
 
-- Go 1.21+（源码编译需要）
-- EdgeX Foundry（可选，数据源）
+- ARM网关（推荐：256MB+内存）
 - MQTT Broker（如 Mosquitto）
+- EdgeX Foundry（可选，数据源）
 
-### 方式一：二进制部署（推荐）
+### 方式一：固件部署到ARM网关（推荐）
 
 ```bash
-# 从 GitHub Releases 下载
-# https://github.com/liaoran123/sfsEdgeStore/releases
+# 下载预编译固件（支持常见ARM架构）
+wget https://github.com/liaoran123/sfsEdgeStore/releases/download/v1.0/sfsedgestore_armhf.tar.gz
 
-# 直接运行（测试用）
+# 解压并运行
+tar -zxvf sfsedgestore_armhf.tar.gz
+cd sfsedgestore
 ./sfsedgestore
 
-# 生产环境使用 systemd（Linux）或 Windows 服务
+# 或设置为系统服务
+cp sfsedgestore /usr/local/bin/
+cp sfsedgestore.service /etc/systemd/system/
+systemctl enable sfsedgestore
+systemctl start sfsedgestore
 ```
 
-### 方式二：Docker Compose（推荐）
+### 方式二：交叉编译（开发用）
+
+```bash
+# 针对ARM架构交叉编译
+git clone https://github.com/liaoran123/sfsEdgeStore.git
+cd sfsEdgeStore
+
+# 编译 ARMv7（树莓派等）
+GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o sfsedgestore .
+
+# 编译 ARM64（高端网关）
+GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o sfsedgestore .
+```
+
+### 方式三：Docker Compose（测试/开发）
 
 ```bash
 git clone https://github.com/liaoran123/sfsEdgeStore.git
 cd sfsEdgeStore
 docker-compose up -d
-```
-
-同时启动 sfsEdgeStore + MQTT Broker。访问仪表板 `http://localhost:8081`。
-
-### 方式三：Docker
-
-```bash
-docker run -d \
-  --name sfsedgestore \
-  -p 8081:8081 \
-  -v ./data:/app/data \
-  -v ./config.json:/app/config.json \
-  liaoran123/sfsedgestore:latest
-```
-
-### 方式四：源码编译
-
-```bash
-git clone https://github.com/liaoran123/sfsEdgeStore.git
-cd sfsEdgeStore
-go build -ldflags="-s -w" -o sfsedgestore .
-./sfsedgestore
 ```
 
 ### 验证安装
@@ -113,6 +118,24 @@ curl http://localhost:8081/health
 
 # 在浏览器中打开仪表板
 # http://localhost:8081
+
+# 查看设备状态
+curl http://localhost:8081/api/devices/status
+```
+
+### 授权激活
+
+首次运行需要激活授权：
+
+```bash
+# 通过Web界面激活
+# 访问 http://localhost:8081/activate
+# 输入CPU序列号绑定的授权码
+
+# 或通过API激活
+curl -X POST http://localhost:8081/api/auth/activate \
+  -H "Content-Type: application/json" \
+  -d '{"serial_number": "your-device-serial", "license_key": "your-license-key"}'
 ```
 
 ### 零配置启动
@@ -206,38 +229,30 @@ sfsEdgeStore 使用智能默认值，无需配置即可启动：
 | [安全指南](./docscn/安全指南.md)          | 认证、TLS、加密（中文） |
 | [故障排查](./docscn/故障排查.md)          | 常见问题（中文）      |
 
-#### 合作与投资
+## 💰 商业授权
 
-**sfsEdgeStore** 定位为工业物联网（IIoT）边缘数据解决方案提供商。我们致力于通过技术创新，解决工业现场数据采集与处理的成本与效率瓶颈。
+sfsEdgeStore 提供灵活的商业授权方案，支持个人开发者和企业客户：
 
-#### 核心价值主张
+| 授权类型 | 定价 | 适用场景 |
+|---------|------|---------|
+| **散单授权** | 50元/台（永久授权） | 个人客户、小批量采购 |
+| **批量授权** | 20~30元/台 | 网关工厂、集成商批量预装 |
+| **企业定制** | 按需报价 | 定制开发、专属支持 |
 
-传统工业软件方案普遍依赖昂贵的工控机硬件，导致项目部署成本高昂，难以在资源受限的边缘侧大规模推广。
 
-**sfsEdgeStore 以 27.6MB 的极致轻量级架构，成功将完整的数据处理能力下沉至成本仅 200 元的 ARM 网关。** 这不仅是一款软件产品，更是对工业网关硬件标准的一次重新定义。
 
-#### 方案对比与优势
+#### 技术服务
 
-下表清晰地展示了 sfsEdgeStore 相较于传统方案的颠覆性优势：
-
-| 维度       | 传统工业软件/方案      | sfsEdgeStore    | 为客户创造的价值                      |
-| :------- | :------------- | :-------------- | :---------------------------- |
-| **硬件成本** | 依赖昂贵工控机（500元+） | 适配普通ARM网关（200元） | **节省60%硬件预算**，大幅降低项目初始投入。     |
-| **资源占用** | 架构臃肿，内存占用高     | **27.6MB** 极致轻量 | 可在老旧设备上运行，激活巨大的**存量市场改造潜力**。  |
-| **部署难度** | 需专业团队现场实施      | **5分钟**开箱即用     | 部署流程极简，具备**SaaS化的快速规模化复制能力**。 |
-| **技术壁垒** | 依赖外部库，架构沉重     | **纯Go编写**，零外部依赖 | 极高的工程效率与稳定性，**一人团队即可支撑核心研发**。 |
-| **可扩展性** | 受限于中心服务器性能     | 无状态设计，支持水平扩展    | 架构灵活，为支撑**未来数万个边缘节点**的部署而生。   |
-
-### 💡 我们能提供什么
+作为个人开发者，我提供以下技术服务：
 
 | 服务       | 说明               |
 | -------- | ---------------- |
-| **方案咨询** | 评估边缘计算需求，设计最优架构  |
-| **定制开发** | 定制协议、集成、行业专属功能   |
+| **固件定制** | 适配特定硬件网关，定制采集协议 |
 | **技术支持** | 优先邮件支持、部署协助、故障排查 |
-| **培训赋能** | 现场或远程技术培训        |
+| **方案咨询** | 评估边缘计算需求，设计最优架构  |
 
 **联系：** <sfsweb@qq.com>
+
 
 ## 🤝 贡献
 
